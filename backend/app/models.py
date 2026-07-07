@@ -158,6 +158,7 @@ class PlayerValue(Base):
 
     player_id: Mapped[int] = mapped_column(ForeignKey("players.player_id"), primary_key=True)
     season: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    player_type: Mapped[PlayerType] = mapped_column(player_type_enum, primary_key=True)
     position: Mapped[Position] = mapped_column(position_enum)
     composite_percentile: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     salary_percentile: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
