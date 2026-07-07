@@ -139,6 +139,20 @@ class PitcherStats(Base):
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class FieldingStats(Base):
+    __tablename__ = "fielding_stats"
+
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.player_id"), primary_key=True)
+    season: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.team_id"))
+    innings: Mapped[Decimal | None] = mapped_column(Numeric(6, 1))
+    oaa: Mapped[int | None] = mapped_column(SmallInteger)
+    frv: Mapped[int | None] = mapped_column(SmallInteger)
+    drs: Mapped[int | None] = mapped_column(SmallInteger)
+    source: Mapped[str] = mapped_column(String(20))
+    scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class PlayerValue(Base):
     __tablename__ = "player_value"
 

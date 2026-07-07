@@ -1,14 +1,6 @@
-import math
-
 import pybaseball as pb
 
-
-def _clean(value):
-    if value is None:
-        return None
-    if isinstance(value, float) and math.isnan(value):
-        return None
-    return value
+from app.pipeline.utils import clean_nan as _clean
 
 
 def fetch_batter_advanced(season: int) -> dict[int, dict]:

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     BatterStats,
+    FieldingStats,
     League,
     PitcherStats,
     Player,
@@ -13,9 +14,10 @@ from app.models import (
     Position,
     Team,
 )
-from app.pipeline import mlb_stats_api, statcast_metrics
+from app.pipeline import fielding_metrics, mlb_stats_api, statcast_metrics
 
 SOURCE_STATS = "mlb_api+statcast"
+SOURCE_FIELDING = "statcast+fangraphs"
 
 BATTER_POSITIONS = {"C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"}
 
@@ -126,6 +128,8 @@ def ingest_season(db: Session, season: int) -> None:
     fip_constant = _compute_fip_constant(pitching_splits)
     print(f"[{season}] computed FIP constant: {fip_constant:.3f}")
 
+    resolved_teams: dict[int, int] = {}
+
     skipped_batters = 0
     for split in hitting_splits:
         stat = split["stat"]
@@ -142,6 +146,7 @@ def ingest_season(db: Session, season: int) -> None:
 
         pa = stat.get("plateAppearances") or 0
         adv = batter_advanced.get(pid, {})
+        resolved_teams[pid] = team_id
 
         db.merge(
             PlayerSeason(
@@ -203,6 +208,7 @@ def ingest_season(db: Session, season: int) -> None:
             ) / true_ip + fip_constant
 
         adv = pitcher_advanced.get(pid, {})
+        resolved_teams[pid] = team_id
 
         db.merge(
             PlayerSeason(
@@ -234,9 +240,39 @@ def ingest_season(db: Session, season: int) -> None:
             )
         )
 
+    print(f"[{season}] fetching fielding metrics (OAA/FRV from Statcast, DRS from FanGraphs)...")
+    oaa_frv = fielding_metrics.fetch_oaa_frv(season)
+    drs = fielding_metrics.fetch_drs(season)
+    fielding_player_ids = set(oaa_frv) | set(drs)
+
+    skipped_fielders = 0
+    for pid in fielding_player_ids:
+        team_id = resolved_teams.get(pid)
+        if team_id is None:
+            skipped_fielders += 1
+            continue
+
+        oaa_row = oaa_frv.get(pid, {})
+        drs_row = drs.get(pid, {})
+
+        db.merge(
+            FieldingStats(
+                player_id=pid,
+                season=season,
+                team_id=team_id,
+                innings=drs_row.get("innings"),
+                oaa=oaa_row.get("oaa"),
+                frv=oaa_row.get("frv"),
+                drs=drs_row.get("drs"),
+                source=SOURCE_FIELDING,
+                scraped_at=now,
+            )
+        )
+
     db.commit()
     print(
         f"[{season}] done. batters: {len(hitting_splits) - skipped_batters} "
         f"({skipped_batters} skipped), pitchers: {len(pitching_splits) - skipped_pitchers} "
-        f"({skipped_pitchers} skipped)"
+        f"({skipped_pitchers} skipped), fielders: {len(fielding_player_ids) - skipped_fielders} "
+        f"({skipped_fielders} skipped)"
     )
