@@ -86,6 +86,7 @@ class PlayerSalary(Base):
     salary: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     aav: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     contract_years_total: Mapped[int | None] = mapped_column(SmallInteger)
+    contract_type: Mapped[str | None] = mapped_column(String(40))
     source: Mapped[str] = mapped_column(String(20))
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -163,6 +164,11 @@ class PlayerValue(Base):
     composite_percentile: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     salary_percentile: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     value_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    # Set only for pre-arbitration players, who are excluded from value_score
+    # (their salary is fixed near the league minimum by rule, not the market, so
+    # comparing it to performance isn't a meaningful signal). Estimated as the
+    # median AAV of comparable-performing market-priced peers at their position.
+    projected_salary: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

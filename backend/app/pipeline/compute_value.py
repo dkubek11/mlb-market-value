@@ -12,9 +12,31 @@ from app.models import PlayerType, PlayerValue, Position, TeamPayrollSummary
 MIN_BATTER_PA = 50
 MIN_PITCHER_IP = 15
 
+# Pre-arbitration (and minor-league) players are paid at or near the league
+# minimum by CBA rule, almost regardless of performance -- so comparing their
+# salary to their performance isn't a market-inefficiency signal, it just
+# measures "is this player good." They're excluded from the salary comparison
+# and given a projected market salary instead. Arbitration salaries do move
+# with performance (via comp-based arbitration hearings), so they stay in.
+# FanGraphs' ContractType values include prefixed variants like
+# "Pre-Arbitration (Guaranteed Section)" (sometimes truncated at the source to
+# "...Sect"), so this checks a prefix, not an exact match.
+NON_MARKET_PREFIXES = ("Pre-Arbitration", "MiLB")
+
+
+def _is_pre_arb(contract_type: str | None) -> bool:
+    return contract_type is not None and contract_type.startswith(NON_MARKET_PREFIXES)
+
+
+# Minimum number of comparable-performance market-priced peers required for a
+# pre-arb player's salary projection (also the fallback threshold for whether a
+# position has enough market comps on its own, vs. falling back to the whole
+# batter/pitcher pool).
+PROJECTION_COMPS = 10
+
 _BATTER_QUERY = text(
     """
-    SELECT bs.player_id, ps.position AS position, bs.xwoba, sal.salary
+    SELECT bs.player_id, ps.position AS position, bs.xwoba, sal.salary, sal.aav, sal.contract_type
     FROM batter_stats bs
     JOIN player_seasons ps
         ON ps.player_id = bs.player_id AND ps.season = bs.season AND ps.player_type = 'BATTER'
@@ -25,7 +47,7 @@ _BATTER_QUERY = text(
 
 _PITCHER_QUERY = text(
     """
-    SELECT ps_stats.player_id, ps.position AS position, ps_stats.fip, sal.salary
+    SELECT ps_stats.player_id, ps.position AS position, ps_stats.fip, sal.salary, sal.aav, sal.contract_type
     FROM pitcher_stats ps_stats
     JOIN player_seasons ps
         ON ps.player_id = ps_stats.player_id AND ps.season = ps_stats.season AND ps.player_type = 'PITCHER'
@@ -54,14 +76,59 @@ _TEAM_PAYROLL_QUERY = text(
 )
 
 
-def _percentiles(df: pd.DataFrame, stat_col: str, higher_is_better: bool) -> pd.DataFrame:
+def _project_salaries(pre_arb: pd.DataFrame, market: pd.DataFrame) -> pd.DataFrame:
+    """Projects a market salary for each pre-arb player as the median AAV of
+    comparable-performing market-priced peers at the same position (falling back
+    to the whole market pool for that stat type if the position doesn't have
+    enough market comps).
+
+    Real contracts (especially for pitchers) have huge AAV variance even among
+    similarly-performing players this season, since they're priced on track
+    record and multi-year projections too, not just this year's stat line. A
+    strict "5 nearest by percentile" comp set is noisy enough that one or two
+    outlier mega-contracts can swing the median a lot, so this widens the
+    percentile window until it has a reasonably stable sample instead.
+    """
+    pre_arb = pre_arb.copy()
+    projections = []
+    for row in pre_arb.itertuples():
+        pool = market[market["position"] == row.position]
+        if len(pool) < PROJECTION_COMPS:
+            pool = market
+        if len(pool) == 0:
+            projections.append(None)
+            continue
+        window = 10
+        comps = pool[(pool["composite_percentile"] - row.composite_percentile).abs() <= window]
+        while len(comps) < PROJECTION_COMPS and window < 100:
+            window += 10
+            comps = pool[(pool["composite_percentile"] - row.composite_percentile).abs() <= window]
+        if len(comps) == 0:
+            comps = pool
+        projections.append(comps["aav"].median())
+    pre_arb["projected_salary"] = projections
+    return pre_arb
+
+
+def _compute_group(df: pd.DataFrame, stat_col: str, higher_is_better: bool) -> pd.DataFrame:
     df = df.copy()
     df["composite_percentile"] = (
         df.groupby("position")[stat_col].rank(pct=True, ascending=higher_is_better) * 100
     )
-    df["salary_percentile"] = df.groupby("position")["salary"].rank(pct=True) * 100
-    df["value_score"] = df["composite_percentile"] - df["salary_percentile"]
-    return df
+
+    is_pre_arb = df["contract_type"].apply(_is_pre_arb)
+    market = df[~is_pre_arb].copy()
+    pre_arb = df[is_pre_arb].copy()
+
+    market["salary_percentile"] = market.groupby("position")["salary"].rank(pct=True) * 100
+    market["value_score"] = market["composite_percentile"] - market["salary_percentile"]
+    market["projected_salary"] = None
+
+    pre_arb["salary_percentile"] = None
+    pre_arb["value_score"] = None
+    pre_arb = _project_salaries(pre_arb, market)
+
+    return pd.concat([market, pre_arb], ignore_index=True)
 
 
 def compute_player_value(db: Session, season: int) -> int:
@@ -70,8 +137,8 @@ def compute_player_value(db: Session, season: int) -> int:
     batters = pd.read_sql(_BATTER_QUERY, engine, params={"season": season, "min_pa": MIN_BATTER_PA})
     pitchers = pd.read_sql(_PITCHER_QUERY, engine, params={"season": season, "min_ip": MIN_PITCHER_IP})
 
-    batters = _percentiles(batters, "xwoba", higher_is_better=True)
-    pitchers = _percentiles(pitchers, "fip", higher_is_better=False)
+    batters = _compute_group(batters, "xwoba", higher_is_better=True)
+    pitchers = _compute_group(pitchers, "fip", higher_is_better=False)
 
     count = 0
     for df, player_type in ((batters, PlayerType.BATTER), (pitchers, PlayerType.PITCHER)):
@@ -83,8 +150,13 @@ def compute_player_value(db: Session, season: int) -> int:
                     player_type=player_type,
                     position=Position[row.position],
                     composite_percentile=round(row.composite_percentile, 2),
-                    salary_percentile=round(row.salary_percentile, 2),
-                    value_score=round(row.value_score, 2),
+                    salary_percentile=(
+                        round(row.salary_percentile, 2) if pd.notna(row.salary_percentile) else None
+                    ),
+                    value_score=round(row.value_score, 2) if pd.notna(row.value_score) else None,
+                    projected_salary=(
+                        round(row.projected_salary, 2) if pd.notna(row.projected_salary) else None
+                    ),
                     computed_at=now,
                 )
             )

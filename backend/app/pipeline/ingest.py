@@ -143,6 +143,7 @@ def _ingest_salaries(
                 salary=total_salary,
                 aav=Decimal(str(chosen["aav"])),
                 contract_years_total=chosen["contract_years_total"],
+                contract_type=chosen["contract_type"],
                 source=SOURCE_SALARY,
                 scraped_at=now,
             )

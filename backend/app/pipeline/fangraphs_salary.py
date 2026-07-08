@@ -80,6 +80,7 @@ def fetch_all_salaries(season: int) -> list[dict]:
                         "salary": year.get("Salary"),
                         "aav": year.get("AAV") or summary.get("AAV"),
                         "contract_years_total": summary.get("YearsTotal"),
+                        "contract_type": summary.get("ContractType"),
                     }
                 )
     return rows
