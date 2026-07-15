@@ -138,6 +138,10 @@ class PitcherStats(Base):
     hard_hit_rate_against: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     barrel_rate_against: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     avg_exit_velo_against: Mapped[Decimal | None] = mapped_column(Numeric(4, 1))
+    k_rate: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    bb_rate: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    chase_rate: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    whiff_rate: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     source: Mapped[str] = mapped_column(String(20))
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

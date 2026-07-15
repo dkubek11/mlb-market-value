@@ -17,6 +17,7 @@ from app.models import (
 )
 from app.pipeline import (
     fangraphs_batting,
+    fangraphs_pitching,
     fangraphs_salary,
     fielding_metrics,
     mlb_stats_api,
@@ -181,6 +182,7 @@ def ingest_season(db: Session, season: int) -> None:
     batter_advanced = statcast_metrics.fetch_batter_advanced(season)
     pitcher_advanced = statcast_metrics.fetch_pitcher_advanced(season)
     plate_discipline = fangraphs_batting.fetch_plate_discipline(season)
+    pitcher_discipline = fangraphs_pitching.fetch_plate_discipline(season)
 
     fip_constant = _compute_fip_constant(pitching_splits)
     print(f"[{season}] computed FIP constant: {fip_constant:.3f}")
@@ -268,6 +270,7 @@ def ingest_season(db: Session, season: int) -> None:
             ) / true_ip + fip_constant
 
         adv = pitcher_advanced.get(pid, {})
+        pd_row = pitcher_discipline.get(pid, {})
         resolved_teams[pid] = team_id
 
         db.merge(
@@ -295,6 +298,10 @@ def ingest_season(db: Session, season: int) -> None:
                 hard_hit_rate_against=adv.get("hard_hit_rate_against"),
                 barrel_rate_against=adv.get("barrel_rate_against"),
                 avg_exit_velo_against=adv.get("avg_exit_velo_against"),
+                k_rate=pd_row.get("k_rate"),
+                bb_rate=pd_row.get("bb_rate"),
+                chase_rate=pd_row.get("chase_rate"),
+                whiff_rate=pd_row.get("whiff_rate"),
                 source=SOURCE_STATS,
                 scraped_at=now,
             )
