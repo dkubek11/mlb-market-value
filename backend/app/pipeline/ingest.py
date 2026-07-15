@@ -15,7 +15,13 @@ from app.models import (
     Position,
     Team,
 )
-from app.pipeline import fangraphs_salary, fielding_metrics, mlb_stats_api, statcast_metrics
+from app.pipeline import (
+    fangraphs_batting,
+    fangraphs_salary,
+    fielding_metrics,
+    mlb_stats_api,
+    statcast_metrics,
+)
 
 SOURCE_STATS = "mlb_api+statcast"
 SOURCE_FIELDING = "statcast+fangraphs"
@@ -174,6 +180,7 @@ def ingest_season(db: Session, season: int) -> None:
     print(f"[{season}] fetching Statcast advanced metrics...")
     batter_advanced = statcast_metrics.fetch_batter_advanced(season)
     pitcher_advanced = statcast_metrics.fetch_pitcher_advanced(season)
+    plate_discipline = fangraphs_batting.fetch_plate_discipline(season)
 
     fip_constant = _compute_fip_constant(pitching_splits)
     print(f"[{season}] computed FIP constant: {fip_constant:.3f}")
@@ -196,6 +203,7 @@ def ingest_season(db: Session, season: int) -> None:
 
         pa = stat.get("plateAppearances") or 0
         adv = batter_advanced.get(pid, {})
+        pd_row = plate_discipline.get(pid, {})
         resolved_teams[pid] = team_id
 
         db.merge(
@@ -230,6 +238,8 @@ def ingest_season(db: Session, season: int) -> None:
                 sprint_speed=adv.get("sprint_speed"),
                 k_rate=(Decimal(stat["strikeOuts"]) / pa) if pa else None,
                 bb_rate=(Decimal(stat["baseOnBalls"]) / pa) if pa else None,
+                chase_rate=pd_row.get("chase_rate"),
+                whiff_rate=pd_row.get("whiff_rate"),
                 source=SOURCE_STATS,
                 scraped_at=now,
             )
