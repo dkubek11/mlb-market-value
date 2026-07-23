@@ -43,6 +43,7 @@ def fetch_pitcher_advanced(season: int) -> dict[int, dict]:
         advanced[int(row["player_id"])] = {
             "xera": _clean(row["xera"]),
             "xwoba_against": _clean(row["est_woba"]),
+            "xba_against": _clean(row["est_ba"]),
         }
     for _, row in exitvelo.iterrows():
         pid = int(row["player_id"])

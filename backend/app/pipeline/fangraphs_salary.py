@@ -78,7 +78,18 @@ def fetch_all_salaries(season: int) -> list[dict]:
                         "player_id": int(summary["MLBAMID"]),
                         "team_abbreviation": abbreviation,
                         "salary": year.get("Salary"),
-                        "aav": year.get("AAV") or summary.get("AAV"),
+                        # contractSummary.AAV is the deal-level, constant average
+                        # annual value -- the number actually reported as a
+                        # player's "AAV" everywhere. contractYears[].AAV is a
+                        # per-year value FanGraphs uses for competitive-balance-
+                        # tax accounting, which only diverges from the deal AAV
+                        # when a contract has unusual structuring (options,
+                        # incentives, back/front-loading) -- e.g. Jack Flaherty's
+                        # 2026 CBT-year AAV shows $7.5M against a real $27.5M
+                        # deal AAV because of a "valley charge" proration quirk.
+                        # Prefer the summary figure; only fall back to the
+                        # per-year one if the summary is missing entirely.
+                        "aav": summary.get("AAV") or year.get("AAV"),
                         "contract_years_total": summary.get("YearsTotal"),
                         "contract_type": summary.get("ContractType"),
                     }

@@ -135,6 +135,7 @@ class PitcherStats(Base):
     bb_9: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     xera: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     xwoba_against: Mapped[Decimal | None] = mapped_column(Numeric(5, 3))
+    xba_against: Mapped[Decimal | None] = mapped_column(Numeric(5, 3))
     hard_hit_rate_against: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     barrel_rate_against: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     avg_exit_velo_against: Mapped[Decimal | None] = mapped_column(Numeric(4, 1))
@@ -142,6 +143,13 @@ class PitcherStats(Base):
     bb_rate: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     chase_rate: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     whiff_rate: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    z_swing_rate: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    # Release extension in feet -- not on any per-season leaderboard, so this is
+    # averaged from a full-season pitch-by-pitch Statcast pull (statcast_extension.py).
+    extension: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
+    # FanGraphs pitch-modeling grades, scaled to 100 = league average.
+    stuff_plus: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    location_plus: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     source: Mapped[str] = mapped_column(String(20))
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

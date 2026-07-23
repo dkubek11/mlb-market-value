@@ -1,0 +1,1670 @@
+<meta charset="utf-8" />
+<title>MLB Market Value — 2026</title>
+<style>
+  /* Rye (SIL OFL 1.1, Sorkin Type Co.) -- vintage ballpark-signage display face */
+  @font-face {
+    font-family: "Rye"; font-style: normal; font-weight: 400; font-display: swap;
+    src: url(data:font/woff2;base64,__RYE_FONT__) format("woff2");
+  }
+  /* Courier Prime (SIL OFL 1.1) -- typewriter face for stats, like an old box score */
+  @font-face {
+    font-family: "Courier Prime"; font-style: normal; font-weight: 400; font-display: swap;
+    src: url(data:font/woff2;base64,__COURIER_REGULAR_FONT__) format("woff2");
+  }
+  @font-face {
+    font-family: "Courier Prime"; font-style: normal; font-weight: 700; font-display: swap;
+    src: url(data:font/woff2;base64,__COURIER_BOLD_FONT__) format("woff2");
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1d170f; --surface: #292116; --surface-2: #362b1d;
+      --border: rgba(240,230,209,0.14); --ink: #f0e6d2; --ink-dim: #b7a586;
+      --accent: #dba53f; --accent-ink: #1d170f;
+      --good: #74ac78; --good-soft: rgba(116,172,120,0.18);
+      --bad: #db7259; --bad-soft: rgba(219,114,89,0.18);
+      --chip-bg: #362b1d; --chip-active-bg: #dba53f; --chip-active-ink: #1d170f;
+      --field-grass: #16241a; --field-infield: #20301f; --field-dirt: #7a5636; --field-line: rgba(240,230,209,0.55); --field-base: #f0e6d2;
+      --paper-noise-opacity: 0.05;
+    }
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f1e6ce; --surface: #faf3e2; --surface-2: #ecdcb8;
+      --border: rgba(42,32,21,0.16); --ink: #2a2015; --ink-dim: #6b5a3f;
+      --accent: #a8752a; --accent-ink: #faf3e2;
+      --good: #3d6b45; --good-soft: rgba(61,107,69,0.13);
+      --bad: #a33b2d; --bad-soft: rgba(163,59,45,0.13);
+      --chip-bg: #ecdcb8; --chip-active-bg: #a8752a; --chip-active-ink: #faf3e2;
+      --field-grass: #9dbd8f; --field-infield: #8bae7c; --field-dirt: #b8875a; --field-line: rgba(250,243,226,0.9); --field-base: #faf3e2;
+      --paper-noise-opacity: 0.05;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1d170f; --surface: #292116; --surface-2: #362b1d;
+    --border: rgba(240,230,209,0.14); --ink: #f0e6d2; --ink-dim: #b7a586;
+    --accent: #dba53f; --accent-ink: #1d170f;
+    --good: #74ac78; --good-soft: rgba(116,172,120,0.18);
+    --bad: #db7259; --bad-soft: rgba(219,114,89,0.18);
+    --chip-bg: #362b1d; --chip-active-bg: #dba53f; --chip-active-ink: #1d170f;
+    --field-grass: #16241a; --field-infield: #20301f; --field-dirt: #7a5636; --field-line: rgba(240,230,209,0.55); --field-base: #f0e6d2;
+    --paper-noise-opacity: 0.05;
+  }
+  :root[data-theme="light"] {
+    --bg: #f1e6ce; --surface: #faf3e2; --surface-2: #ecdcb8;
+    --border: rgba(42,32,21,0.16); --ink: #2a2015; --ink-dim: #6b5a3f;
+    --accent: #a8752a; --accent-ink: #faf3e2;
+    --good: #3d6b45; --good-soft: rgba(61,107,69,0.13);
+    --bad: #a33b2d; --bad-soft: rgba(163,59,45,0.13);
+    --chip-bg: #ecdcb8; --chip-active-bg: #a8752a; --chip-active-ink: #faf3e2;
+    --field-grass: #9dbd8f; --field-infield: #8bae7c; --field-dirt: #b8875a; --field-line: rgba(250,243,226,0.9); --field-base: #faf3e2;
+    --paper-noise-opacity: 0.05;
+  }
+
+  :root { --paper-noise: url(data:image/svg+xml;base64,__NOISE_TEXTURE__); }
+  * { box-sizing: border-box; }
+  body {
+    background-color: var(--bg); color: var(--ink);
+    background-image: var(--paper-noise); background-repeat: repeat; background-size: 180px 180px;
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    margin: 0; padding: 0;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+
+  .eyebrow {
+    font-family: "Courier Prime", monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 8px;
+  }
+  h1 {
+    font-family: "Rye", Georgia, serif; font-weight: 400; letter-spacing: 0.01em;
+    font-size: clamp(32px, 5.5vw, 48px); line-height: 1.15;
+    margin: 0 0 10px; text-wrap: balance;
+  }
+  .lede { color: var(--ink-dim); font-size: 15.5px; line-height: 1.55; max-width: 62ch; margin: 0 0 4px; }
+  .snapshot-note {
+    color: var(--ink-dim); font-size: 12.5px; margin: 10px 0 28px;
+    font-family: "Courier Prime", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  }
+
+  .kpis {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 28px;
+  }
+  .kpi-value.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kpi {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 7px;
+    padding: 14px 16px;
+  }
+  .kpi-label { font-family: "Courier Prime", monospace; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px; }
+  .kpi-value {
+    font-family: "Courier Prime", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .kpi-sub { font-size: 12px; color: var(--ink-dim); margin-top: 2px; }
+
+  .method {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px;
+    padding: 14px 18px; font-size: 13px; line-height: 1.55; color: var(--ink-dim); margin-bottom: 28px;
+  }
+  .method strong { color: var(--ink); }
+
+  .page-shell { display: flex; align-items: flex-start; max-width: 1320px; margin: 0 auto; }
+  .sidebar {
+    position: sticky; top: 0; height: 100vh; width: 220px; flex-shrink: 0;
+    display: flex; flex-direction: column; padding: 32px 18px;
+    border-right: 1px solid var(--border);
+  }
+  .sidebar-brand { margin-bottom: 32px; padding: 0 10px; }
+  .sidebar-brand .eyebrow { margin: 0; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 11px; background: none; border: none;
+    border-left: 3px solid transparent; color: var(--ink-dim); cursor: pointer;
+    font-family: "Courier Prime", monospace; font-size: 13px; font-weight: 700;
+    letter-spacing: 0.05em; text-transform: uppercase; padding: 11px 12px; border-radius: 0 6px 6px 0;
+    text-align: left; transition: background 0.15s, color 0.15s;
+  }
+  .nav-item svg { width: 17px; height: 17px; flex-shrink: 0; }
+  .nav-item:hover { background: var(--surface-2); color: var(--ink); }
+  .nav-item.active { background: var(--surface-2); color: var(--accent); border-left-color: var(--accent); }
+  .sidebar-foot { margin-top: auto; padding: 0 10px; }
+  .sidebar-foot .snapshot-note { margin: 0; font-size: 10.5px; line-height: 1.6; }
+  .main-content { flex: 1; min-width: 0; padding: 32px 32px 64px; }
+
+  .hero-center { text-align: center; max-width: 720px; margin: 6vh auto 0; min-height: 34vh; display: flex; flex-direction: column; justify-content: center; }
+  .hero-center h1 { font-size: clamp(40px, 6vw, 68px); line-height: 1.08; }
+  .hero-center .lede { margin: 18px auto 0; }
+  .hero-center .eyebrow { display: block; }
+
+  @media (max-width: 900px) {
+    .page-shell { flex-direction: column; }
+    .sidebar { position: static; width: auto; height: auto; flex-direction: row; align-items: center; padding: 16px 20px; }
+    .sidebar-brand { margin: 0 20px 0 0; padding: 0; }
+    .sidebar-nav { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+    .nav-item { border-left: none; border-bottom: 2px solid transparent; border-radius: 4px; padding: 8px 10px; }
+    .nav-item.active { border-left-color: transparent; border-bottom-color: var(--accent); }
+    .sidebar-foot { display: none; }
+    .main-content { padding: 24px 20px 48px; }
+    .hero-center { min-height: 0; margin-top: 2vh; }
+  }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+  .search {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+    color: var(--ink); font-size: 13.5px; padding: 8px 12px; width: 220px; font-family: Georgia, serif;
+  }
+  .search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    background: var(--chip-bg); color: var(--ink-dim); border: 1px solid var(--border);
+    border-radius: 4px; font-size: 11.5px; font-weight: 700; padding: 5px 11px;
+    cursor: pointer; font-family: "Courier Prime", monospace; letter-spacing: 0.02em;
+  }
+  .chip.active { background: var(--chip-active-bg); color: var(--chip-active-ink); border-color: transparent; }
+  .chip:focus-visible, .nav-item:focus-visible, .search:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .spacer { flex: 1; }
+  .count { font-size: 12px; color: var(--ink-dim); font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; }
+
+  .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; }
+  thead th {
+    text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-dim); padding: 10px 14px; border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  thead th.num, td.num { text-align: right; }
+  thead th.sorted { color: var(--ink); }
+  tbody td { padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 13.5px; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--surface-2); }
+  td.num { font-family: "Courier Prime", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+  .name-cell { display: flex; flex-direction: column; }
+  .team-tag {
+    font-size: 11px; color: var(--ink-dim); font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .pos-pill {
+    display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px;
+    background: var(--surface-2); color: var(--ink-dim); font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+
+  .bar-cell { display: flex; align-items: center; gap: 8px; }
+  .bar-track { position: relative; width: 84px; height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+  .bar-mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--border); }
+  .bar-fill { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+  .bar-fill.good { background: var(--good); }
+  .bar-fill.bad { background: var(--bad); }
+  .value-num { font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-variant-numeric: tabular-nums; font-weight: 600; width: 46px; text-align: right; }
+  .value-num.good { color: var(--good); }
+  .value-num.bad { color: var(--bad); }
+  .good { color: var(--good); }
+  .bad { color: var(--bad); }
+  .proj { color: var(--accent); }
+
+  .empty { padding: 40px; text-align: center; color: var(--ink-dim); font-size: 13.5px; }
+
+  .row-toggle { cursor: pointer; }
+  .chevron {
+    display: inline-block; width: 12px; margin-right: 6px; color: var(--ink-dim);
+    transition: transform 0.15s ease; font-size: 10px;
+  }
+  .chevron.open { transform: rotate(90deg); color: var(--accent); }
+  .detail-row td { background: var(--surface-2); padding: 0; border-bottom: 1px solid var(--border); }
+  .detail-inner { padding: 14px 18px 16px 34px; font-size: 13px; line-height: 1.7; }
+  .detail-line { color: var(--ink-dim); }
+  .detail-line b { color: var(--ink); font-weight: 600; }
+  .detail-line .mono { font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .detail-formula {
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-size: 14px; font-weight: 600;
+    margin-top: 8px; padding-top: 10px; border-top: 1px dashed var(--border);
+  }
+  .detail-formula .good { color: var(--good); }
+  .detail-formula .bad { color: var(--bad); }
+
+  .diamond-row td { background: var(--surface-2); padding: 0; border-bottom: 1px solid var(--border); }
+  .diamond-panel { padding: 20px 20px 24px; }
+  .diamond-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .diamond-head h3 { font-family: "Rye", Georgia, serif; font-weight: 400; font-size: 19px; margin: 0; letter-spacing: 0.01em; }
+  .diamond-head .diamond-sub { font-size: 12px; color: var(--ink-dim); }
+  .diamond-wrap { max-width: 620px; margin: 0 auto; }
+  .diamond-svg { width: 100%; height: auto; display: block; }
+  .pos-marker { cursor: default; }
+  .pos-marker[data-pid] { cursor: pointer; }
+  .pos-avatar-ring { transition: filter 0.15s; }
+  .pos-marker:hover .pos-avatar-ring { filter: brightness(1.12); }
+  .pos-initials { font-weight: 700; font-size: 14px; fill: var(--accent-ink); font-family: "Courier Prime", monospace; }
+  .pos-tag { font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; fill: var(--ink-dim); font-family: "Courier Prime", monospace; }
+  .pos-name { font-size: 11px; font-weight: 600; fill: var(--ink); font-family: Georgia, serif; }
+  .pos-score { font-size: 11px; font-weight: 700; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; }
+  .pos-score.good { fill: var(--good); }
+  .pos-score.bad { fill: var(--bad); }
+  .pos-score.proj { fill: var(--accent); }
+  .pos-score.empty { fill: var(--ink-dim); }
+  .diamond-legend { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-top: 10px; font-size: 11.5px; color: var(--ink-dim); }
+  .diamond-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .detail-formula .bad { color: var(--bad); }
+
+  #home-view { margin-top: 4px; }
+  .hero-band { margin-bottom: 32px; }
+
+  .card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 40px; }
+  .section-card {
+    text-align: left; cursor: pointer; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 10px;
+    font-family: inherit; transition: border-color 0.15s, transform 0.15s;
+  }
+  .section-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .section-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .card-icon {
+    width: 40px; height: 40px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--accent);
+  }
+  .card-icon svg { width: 22px; height: 22px; }
+  .card-title { font-family: "Rye", Georgia, serif; font-size: 20px; font-weight: 400; letter-spacing: 0.01em; color: var(--ink); }
+  .card-desc { font-size: 13px; color: var(--ink-dim); line-height: 1.5; flex: 1; }
+  .card-teaser {
+    font-size: 12.5px; font-weight: 600; color: var(--ink); padding-top: 10px; margin-top: 2px;
+    border-top: 1px solid var(--border); font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .card-cta { font-size: 12px; font-weight: 700; color: var(--accent); }
+
+  .preview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+  .preview-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px 8px; }
+  .preview-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .preview-head h3 { font-size: 13px; font-weight: 800; margin: 0; }
+  .preview-sub { font-size: 11px; font-weight: 500; color: var(--ink-dim); text-transform: none; letter-spacing: 0; display: block; margin-top: 1px; }
+  .preview-link {
+    background: none; border: none; color: var(--accent); font-size: 11.5px; font-weight: 700;
+    cursor: pointer; font-family: inherit; white-space: nowrap; padding: 0;
+  }
+  .preview-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px;
+  }
+  .preview-row:last-child { border-bottom: none; }
+  .preview-row-name { color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .preview-row-tag { color: var(--ink-dim); font-size: 10.5px; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; }
+  .preview-row-val {
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-weight: 700; font-size: 12px;
+    white-space: nowrap; flex-shrink: 0;
+  }
+
+  /* --- Baseball card modal --- */
+  .card-overlay {
+    position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+    padding: 28px 16px;
+  }
+  .card-overlay-bg { position: absolute; inset: 0; background: rgba(4,8,6,0.68); backdrop-filter: blur(3px); }
+  .baseball-card {
+    position: relative; width: 380px; max-width: 100%; max-height: calc(100vh - 56px); overflow-y: auto;
+    background: var(--surface); border-radius: 10px; box-shadow: 0 30px 70px rgba(0,0,0,0.55);
+    border: 1px solid var(--border); animation: card-pop 0.22s cubic-bezier(.2,.9,.3,1.1);
+  }
+  @keyframes card-pop { from { opacity: 0; transform: scale(0.94) translateY(10px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .baseball-card { animation: none; } }
+
+  .card-close {
+    position: absolute; top: 12px; right: 12px; z-index: 5; width: 30px; height: 30px; border-radius: 50%;
+    background: rgba(0,0,0,0.32); color: #fff; border: none; cursor: pointer; font-size: 14px;
+    display: flex; align-items: center; justify-content: center; transition: background 0.15s;
+  }
+  .card-close:hover { background: rgba(0,0,0,0.55); }
+
+  .card-head {
+    position: relative; padding: 20px 20px 50px;
+    background: linear-gradient(135deg, var(--team-1), var(--team-2));
+  }
+  .card-head-top {
+    display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 800;
+    letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.9); padding-right: 30px;
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .card-avatar-wrap { position: absolute; left: 50%; bottom: -38px; transform: translateX(-50%); }
+  .card-avatar {
+    width: 82px; height: 82px; border-radius: 50%; background: var(--surface);
+    border: 4px solid var(--surface); display: flex; align-items: center; justify-content: center;
+    font-size: 26px; font-weight: 800; color: var(--team-1); box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  .card-grade-badge {
+    position: absolute; bottom: -3px; right: -8px; background: var(--accent); color: var(--accent-ink);
+    font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 9px; border: 2px solid var(--surface);
+  }
+
+  .card-body { padding: 46px 22px 24px; text-align: center; }
+  .card-name { font-family: "Rye", Georgia, serif; font-size: 24px; font-weight: 400; margin: 0 0 4px; letter-spacing: 0.01em; text-wrap: balance; }
+  .card-subline { font-size: 12.5px; color: var(--ink-dim); margin-bottom: 8px; }
+  .regression-line {
+    font-size: 11.5px; font-weight: 600; margin: -2px 0 12px;
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .regression-line.good { color: var(--good); }
+  .regression-line.bad { color: var(--bad); }
+  .regression-arrow { font-size: 12px; }
+  .regression-tag {
+    display: inline-block; font-size: 11px; margin-left: 4px; font-weight: 700;
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .regression-tag.good { color: var(--good); }
+  .regression-tag.bad { color: var(--bad); }
+  .card-contract-line {
+    display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px;
+    font-size: 11.5px; font-weight: 600; color: var(--ink-dim);
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .card-contract-box { text-align: left; margin-bottom: 16px; }
+  .card-contract-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .card-contract-type {
+    font-size: 10.5px; font-weight: 700; color: var(--ink-dim); background: var(--surface-2);
+    padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  }
+  .card-contract-total {
+    font-size: 11px; color: var(--ink-dim); font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .card-contract-years {
+    max-height: 132px; overflow-y: auto; border: 1px solid var(--border); border-radius: 7px;
+  }
+  .contract-year-row {
+    display: flex; align-items: center; justify-content: space-between; padding: 5px 12px;
+    font-size: 12px; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; border-bottom: 1px solid var(--border);
+  }
+  .contract-year-row:last-child { border-bottom: none; }
+  .contract-year-row .contract-year { color: var(--ink-dim); }
+  .contract-year-row.current { background: var(--good-soft); font-weight: 700; }
+  .contract-year-row.current .contract-year, .contract-year-row.current .contract-year-salary { color: var(--good); }
+
+  .card-value-box {
+    background: var(--surface-2); border-radius: 8px; padding: 12px 14px; margin-bottom: 18px; text-align: left;
+  }
+  .card-value-box .bar-cell { margin-top: 6px; }
+  .card-value-box .bar-track { flex: 1; width: auto; }
+  .card-projected {
+    font-size: 22px; font-weight: 800; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+    color: var(--accent); margin-top: 4px;
+  }
+  .card-value-note { font-size: 11px; color: var(--ink-dim); margin-top: 6px; line-height: 1.5; }
+
+  .card-section-title {
+    font-family: "Courier Prime", monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-dim); text-align: left; margin: 4px 0 8px;
+  }
+  .card-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: left; margin-bottom: 4px; }
+  .card-stats-grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .card-stat { background: var(--surface-2); border-radius: 6px; padding: 8px 10px; }
+  .card-stat-label {
+    font-family: "Courier Prime", monospace; font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-dim);
+  }
+  .card-stat-value {
+    font-size: 15px; font-weight: 700; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; margin-top: 1px;
+  }
+  .card-stat-delta {
+    font-size: 10px; font-weight: 600; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; margin-top: 2px;
+  }
+
+  /* --- Custom weighted score --- */
+  .custom-intro { max-width: 720px; margin-bottom: 22px; }
+  .custom-intro h2 { font-family: "Rye", Georgia, serif; font-weight: 400; font-size: 24px; letter-spacing: 0.01em; margin: 0 0 8px; }
+  .custom-intro p { color: var(--ink-dim); font-size: 14px; line-height: 1.6; margin: 0; }
+  .custom-intro strong { color: var(--ink); }
+
+  .weight-panel {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 28px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 18px 22px; margin-bottom: 10px;
+  }
+  .weight-row { display: flex; align-items: center; gap: 12px; padding: 7px 0; }
+  .weight-label {
+    width: 128px; flex-shrink: 0; font-family: "Courier Prime", monospace; font-size: 12px;
+    font-weight: 700; color: var(--ink); text-transform: uppercase; letter-spacing: 0.02em;
+  }
+  .weight-label .direction { color: var(--ink-dim); font-weight: 400; text-transform: none; font-size: 10px; display: block; }
+  .weight-row input[type="range"] {
+    flex: 1; accent-color: var(--accent); height: 4px; cursor: pointer;
+  }
+  .weight-value {
+    width: 34px; flex-shrink: 0; text-align: right; font-family: "Courier Prime", monospace;
+    font-size: 13px; font-weight: 700; color: var(--accent);
+  }
+  .weight-actions { margin: 0 0 20px; }
+  .weight-group { margin-bottom: 26px; }
+  .weight-group-title { font-family: "Rye", Georgia, serif; font-weight: 400; font-size: 17px; letter-spacing: 0.01em; margin: 0 0 10px; }
+
+  @media (max-width: 720px) {
+    .weight-panel { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 900px) {
+    .card-grid, .preview-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px) {
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .search { width: 100%; }
+  }
+</style>
+
+<div class="page-shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <p class="eyebrow">MLB Market Value</p>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>
+        <span>Home</span>
+      </button>
+      <button class="nav-item" data-tab="players">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7" /></svg>
+        <span>Players</span>
+      </button>
+      <button class="nav-item" data-tab="rookies">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8" /><path d="M15 7h6v6" /></svg>
+        <span>Rookies</span>
+      </button>
+      <button class="nav-item" data-tab="teams">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 9-9 9-9-9z" /></svg>
+        <span>Teams</span>
+      </button>
+      <button class="nav-item" data-tab="custom">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-11M12 6V3M20 21v-5M20 12V3" /><path d="M1 14h6M9 10h6M17 16h6" /></svg>
+        <span>Weights</span>
+      </button>
+    </nav>
+    <div class="sidebar-foot">
+      <p class="snapshot-note" id="snapshot-note"></p>
+    </div>
+  </aside>
+
+  <main class="main-content">
+  <div class="wrap">
+  <div id="home-view">
+    <div class="hero-center">
+      <p class="eyebrow">2026 Season</p>
+      <h1 id="page-title">MLB Pay vs.<br />Performance</h1>
+      <p class="lede" id="page-lede">Every qualified player's on-field percentile ranked against same-position peers, next to where their salary ranks among the same group. The gap between the two is the value score.</p>
+    </div>
+    <div class="hero-band" id="hero-band"></div>
+
+    <div class="card-grid" id="section-cards"></div>
+
+    <div class="preview-grid">
+      <div class="preview-card">
+        <div class="preview-head">
+          <h3>Most underpaid <span class="preview-sub">market-priced players</span></h3>
+          <button class="preview-link" data-tab="players">See all →</button>
+        </div>
+        <div id="preview-underpaid"></div>
+      </div>
+      <div class="preview-card">
+        <div class="preview-head">
+          <h3>Biggest rookie bargains <span class="preview-sub">projected vs. actual</span></h3>
+          <button class="preview-link" data-tab="rookies">See all →</button>
+        </div>
+        <div id="preview-rookies"></div>
+      </div>
+      <div class="preview-card">
+        <div class="preview-head">
+          <h3>Payroll leaders <span class="preview-sub">2026 total tracked</span></h3>
+          <button class="preview-link" data-tab="teams">See all →</button>
+        </div>
+        <div id="preview-teams"></div>
+      </div>
+    </div>
+
+    <div class="method">
+      <strong>How to read this:</strong> Score = performance percentile − (Pay weight × salary percentile), computed within same position and season. Positive means outperforming their pay grade (underpaid); negative means overpaid relative to position peers. Performance percentile comes from a weighted composite — 12 stats for batters (xwOBA, xBA, xSLG, Barrel%, Hard-Hit%, Chase%, Whiff%, K%, BB%, OAA, FRV, DRS), 13 for pitchers (xERA, xBA/Avg Exit Velo/Hard-Hit%/Barrel% Allowed, K%, BB%, Chase%/Whiff%/Z-Swing% Induced, Extension, Stuff+, Location+) — each stat scored as a z-score against the position average. Adjust any weight, including Pay, in the <strong>Weights</strong> tab and every score, grade, and salary projection on the site recomputes instantly. Minimum sample: 150 PA for batters, 50 IP for pitchers.
+      <br /><br />
+      <strong>Pre-arbitration players skip the pay adjustment</strong> — by CBA rule they're paid at or near the league minimum almost regardless of performance, so weighing their salary would just penalize them for a number they don't control. Their Score is pure performance percentile, and they're broken out in the <strong>Rookies</strong> tab with a projected market salary based on comparable-performing market-priced peers (Arbitration, Extension, or Free Agent deals) at their position.
+      <br /><br />
+      <strong>▲/▼ arrows</strong> next to a player's name (and on their card) flag a gap between their actual AVG/ERA this season and a projected true-talent level, blending two independent signals: a Marcel-style projection (their own last 3 seasons of expected stats, regressed to the league mean by sample size and adjusted for age) and a comparable-player projection (historical players — 2015&ndash;2024 — who were at the same age with a similar recent performance level and trend, weighted by how those comps actually performed the following season). Both are real, established statistical techniques, not black-box models. Green ▲ means they're underperforming that projection and due for positive regression; red ▼ means they're running ahead of it and likely to cool off. For pre-arb players, this projection also nudges their projected salary so a small-sample hot or cold streak doesn't fully drive the number.
+    </div>
+  </div>
+
+  <div id="players-view" style="display:none">
+    <div class="controls">
+      <input class="search" id="player-search" placeholder="Search player or team..." />
+      <div class="chips" id="pos-chips"></div>
+      <div class="spacer"></div>
+      <span class="count" id="player-count"></span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th data-sort="name">Player</th>
+            <th class="num" data-sort="salary">Salary</th>
+            <th class="num" data-sort="compPct">Perf %</th>
+            <th class="num" data-sort="salPct">Pay %</th>
+            <th class="num" data-sort="recommendedSalary">Rec. Pay</th>
+            <th class="num" data-sort="score">Score</th>
+          </tr>
+        </thead>
+        <tbody id="player-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="rookies-view" style="display:none">
+    <div class="controls">
+      <input class="search" id="rookie-search" placeholder="Search player or team..." />
+      <div class="chips" id="rookie-pos-chips"></div>
+      <div class="spacer"></div>
+      <span class="count" id="rookie-count"></span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th data-sort="name">Player</th>
+            <th class="num" data-sort="salary">Actual Salary</th>
+            <th class="num" data-sort="compPct">Perf %</th>
+            <th class="num" data-sort="projectedSalary">Projected Salary</th>
+            <th class="num" data-sort="surplus">Surplus</th>
+          </tr>
+        </thead>
+        <tbody id="rookie-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="teams-view" style="display:none">
+    <div class="controls">
+      <input class="search" id="team-search" placeholder="Search team..." />
+      <div class="spacer"></div>
+      <span class="count" id="team-count"></span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th data-sort="name">Team</th>
+            <th data-sort="division">Division</th>
+            <th class="num" data-sort="payroll">Payroll</th>
+            <th class="num" data-sort="avgScore">Avg Score</th>
+          </tr>
+        </thead>
+        <tbody id="team-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="custom-view" style="display:none">
+    <div class="custom-intro">
+      <h2>Weights</h2>
+      <p>These weights are the site's single source of truth &mdash; every score, grade, and projected salary on Home, Players, Rookies, Teams, and the player card is computed live from them. Each stat is measured as a <strong>z-score</strong> against the position average, multiplied by its weight, and summed into a raw performance subtotal. That subtotal is converted to a percentile within the position, then <strong>Pay</strong> below blends in how well-paid the player is: <code>Score = performance percentile − (Pay weight × salary percentile)</code>. Pre-arbitration players are paid near the league minimum by rule, so they skip the pay adjustment entirely and their Score is just their performance percentile.</p>
+    </div>
+
+    <div class="weight-group">
+      <h3 class="weight-group-title">Pay</h3>
+      <div class="weight-panel" id="weight-panel-pay"></div>
+      <div class="weight-actions">
+        <button class="preview-link" id="reset-pay-weight">Reset to default weight</button>
+      </div>
+    </div>
+    <div class="weight-group">
+      <h3 class="weight-group-title">Batting</h3>
+      <div class="weight-panel" id="weight-panel-bat"></div>
+      <div class="weight-actions">
+        <button class="preview-link" id="reset-bat-weights">Reset to default weights</button>
+      </div>
+    </div>
+    <div class="weight-group">
+      <h3 class="weight-group-title">Pitching</h3>
+      <div class="weight-panel" id="weight-panel-pit"></div>
+      <div class="weight-actions">
+        <button class="preview-link" id="reset-pit-weights">Reset to default weights</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="chips" id="custom-pos-chips"></div>
+      <div class="spacer"></div>
+      <span class="count" id="custom-count"></span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th class="num" data-sort="rank">#</th>
+            <th data-sort="name">Player</th>
+            <th data-sort="position">Pos</th>
+            <th class="num" data-sort="score">Score</th>
+            <th class="num" data-sort="percentile">Percentile</th>
+            <th>Grade</th>
+          </tr>
+        </thead>
+        <tbody id="custom-rows"></tbody>
+      </table>
+    </div>
+  </div>
+  </div>
+  </main>
+</div>
+
+<div class="card-overlay" id="card-overlay" style="display:none">
+  <div class="card-overlay-bg" id="card-overlay-bg"></div>
+  <div id="card-root"></div>
+</div>
+
+<script>
+  const DATA = __DATA_JSON__;
+  const allPlayers = DATA.allPlayers;
+  const positionStats = DATA.positionStats || {};
+  const teams = DATA.teams;
+  const rosters = DATA.rosters || {};
+  const teamColors = DATA.teamColors || {};
+  const contracts = DATA.contracts || {};
+  const teamNameByAbbr = Object.fromEntries(teams.map(t => [t.abbr, t.name]));
+  const marketCount = allPlayers.filter(p => !p.isPreArb).length;
+  const preArbCount = allPlayers.filter(p => p.isPreArb).length;
+  function matchesTeamQuery(p, q) {
+    return p.name.toLowerCase().includes(q) || p.team.toLowerCase().includes(q) ||
+      (teamNameByAbbr[p.team] || '').toLowerCase().includes(q);
+  }
+  // Two-way players (Ohtani) have the same id for both a batting and a
+  // pitching record, so lookups must always disambiguate by position too.
+  function findPlayerRecord(id, position) {
+    return allPlayers.find(p => p.id === id && p.position === position);
+  }
+
+  document.getElementById('snapshot-note').textContent =
+    `Snapshot of 2026 season data · ${marketCount} market-priced players + ${preArbCount} pre-arb/MiLB prospects (min. 150 PA / 50 IP) across ${teams.length} teams · captured ${DATA.capturedAt}`;
+
+  function fmtMoney(n) {
+    if (n == null) return '—';
+    if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
+    return '$' + Math.round(n / 1000) + 'K';
+  }
+  function fmtSigned(n) {
+    if (n == null) return '—';
+    const s = n >= 0 ? '+' : '';
+    return s + n.toFixed(1);
+  }
+
+  function valueBar(value, max) {
+    const pct = Math.min(Math.abs(value) / max, 1) * 50;
+    const cls = value >= 0 ? 'good' : 'bad';
+    const style = value >= 0
+      ? `left:50%; width:${pct}%;`
+      : `right:50%; width:${pct}%;`;
+    return `<div class="bar-cell">
+      <div class="bar-track"><div class="bar-mid"></div><div class="bar-fill ${cls}" style="${style}"></div></div>
+      <span class="value-num ${cls}">${fmtSigned(value)}</span>
+    </div>`;
+  }
+
+  // --- Baseball card ---
+  const BATTER_STATS = [
+    { key: 'ba', label: 'AVG', type: 'avg3', higherBetter: true },
+    { key: 'obp', label: 'OBP', type: 'avg3', higherBetter: true },
+    { key: 'slg', label: 'SLG', type: 'avg3', higherBetter: true },
+    { key: 'xwoba', label: 'xwOBA', type: 'avg3', higherBetter: true },
+    { key: 'hr', label: 'HR', type: 'int', higherBetter: true },
+    { key: 'rbi', label: 'RBI', type: 'int', higherBetter: true },
+    { key: 'sb', label: 'SB', type: 'int', higherBetter: true },
+    { key: 'barrel_rate', label: 'Barrel%', type: 'pct1', higherBetter: true },
+    { key: 'hard_hit_rate', label: 'Hard-Hit%', type: 'pct1', higherBetter: true },
+    { key: 'sprint_speed', label: 'Sprint Spd', type: 'velo1', higherBetter: true },
+  ];
+  const PITCHER_STATS = [
+    { key: 'era', label: 'ERA', type: 'rate2', higherBetter: false },
+    { key: 'whip', label: 'WHIP', type: 'rate2', higherBetter: false },
+    { key: 'fip', label: 'FIP', type: 'rate2', higherBetter: false },
+    { key: 'xera', label: 'xERA', type: 'rate2', higherBetter: false },
+    { key: 'k_9', label: 'K/9', type: 'rate2', higherBetter: true },
+    { key: 'bb_9', label: 'BB/9', type: 'rate2', higherBetter: false },
+    { key: 'hard_hit_rate_against', label: 'Hard-Hit% Allowed', type: 'pct1', higherBetter: false },
+    { key: 'barrel_rate_against', label: 'Barrel% Allowed', type: 'pct1', higherBetter: false },
+  ];
+  const FIELDING_STATS = [
+    { key: 'oaa', label: 'OAA', type: 'int', higherBetter: true },
+    { key: 'frv', label: 'FRV', type: 'int', higherBetter: true },
+    { key: 'drs', label: 'DRS', type: 'int', higherBetter: true },
+  ];
+
+  function fmtStatValue(type, v) {
+    if (v == null) return '—';
+    if (type === 'avg3') return (v < 0 ? '-' : '') + Math.abs(v).toFixed(3).replace(/^0\./, '.');
+    if (type === 'rate2') return v.toFixed(2);
+    if (type === 'pct1') return v.toFixed(1) + '%';
+    if (type === 'velo1') return v.toFixed(1);
+    if (type === 'int') return Math.round(v).toString();
+    return String(v);
+  }
+  function fmtDelta(type, d) {
+    const sign = d >= 0 ? '+' : '−';
+    const abs = Math.abs(d);
+    if (type === 'avg3') return sign + abs.toFixed(3).replace(/^0\./, '.');
+    if (type === 'rate2') return sign + abs.toFixed(2);
+    if (type === 'pct1') return sign + abs.toFixed(1) + ' pts';
+    if (type === 'velo1') return sign + abs.toFixed(1);
+    if (type === 'int') return sign + Math.round(abs).toString();
+    return sign + abs;
+  }
+  function gradeFor(pct) {
+    if (pct >= 99) return 'S';
+    if (pct >= 90) return 'A+';
+    if (pct >= 80) return 'A';
+    if (pct >= 70) return 'B+';
+    if (pct >= 60) return 'B';
+    if (pct >= 50) return 'C+';
+    if (pct >= 40) return 'C';
+    if (pct >= 30) return 'D';
+    return 'F';
+  }
+
+  // Regression signal: actual outcome stat (AVG/ERA, luck included) vs. a
+  // Marcel-style multi-year projected true-talent level (weighted 3-year
+  // history of expected stats, regressed to league mean by sample size, age-
+  // adjusted). A gap past the noise threshold means the player is running
+  // ahead of or behind their real talent level and due to regress toward it.
+  const REGRESSION_THRESHOLD = { ba: 0.02, era: 0.4 };
+
+  function regressionSignal(record) {
+    if (record.isBatter) {
+      const actual = record.stats.ba;
+      const projected = record.projected && record.projected.xba;
+      if (actual == null || projected == null) return null;
+      return { actual, projected, gap: actual - projected, label: 'AVG', type: 'avg3', threshold: REGRESSION_THRESHOLD.ba };
+    }
+    const actual = record.stats.era;
+    const projected = record.projected && record.projected.xera;
+    if (actual == null || projected == null) return null;
+    return { actual, projected, gap: projected - actual, label: 'ERA', type: 'rate2', threshold: REGRESSION_THRESHOLD.era };
+  }
+
+  // gap > 0: current output is better than true talent suggests -- due to
+  // regress toward *worse* (red, down). gap < 0: current output lags true
+  // talent -- due to regress toward *better* (green, up).
+  function regressionArrow(record) {
+    const sig = regressionSignal(record);
+    if (!sig || Math.abs(sig.gap) < sig.threshold) return null;
+    return sig.gap > 0
+      ? { symbol: '▼', cls: 'bad', sig }
+      : { symbol: '▲', cls: 'good', sig };
+  }
+
+  function regressionTagHtml(record) {
+    const arrow = regressionArrow(record);
+    if (!arrow) return '';
+    const title = arrow.cls === 'bad'
+      ? `${fmtStatValue(arrow.sig.type, arrow.sig.actual)} vs ${fmtStatValue(arrow.sig.type, arrow.sig.projected)} projected — overperforming, regression likely`
+      : `${fmtStatValue(arrow.sig.type, arrow.sig.actual)} vs ${fmtStatValue(arrow.sig.type, arrow.sig.projected)} projected — underperforming, positive regression likely`;
+    return `<span class="regression-tag ${arrow.cls}" title="${title}">${arrow.symbol}</span>`;
+  }
+
+  function statGrid(record, statSet) {
+    const posStats = positionStats[record.position] || {};
+    return statSet.map(s => {
+      const val = record.stats[s.key];
+      if (val == null) return '';
+      const avgEntry = posStats[s.key];
+      const avg = avgEntry ? avgEntry.mean : null;
+      let deltaHtml = '';
+      if (avg != null) {
+        const delta = val - avg;
+        const isGood = s.higherBetter ? delta >= 0 : delta <= 0;
+        deltaHtml = `<div class="card-stat-delta ${isGood ? 'good' : 'bad'}">${fmtDelta(s.type, delta)} vs ${record.position} avg</div>`;
+      }
+      return `<div class="card-stat">
+        <div class="card-stat-label">${s.label}</div>
+        <div class="card-stat-value">${fmtStatValue(s.type, val)}</div>
+        ${deltaHtml}
+      </div>`;
+    }).join('');
+  }
+
+  const CURRENT_SEASON = 2026;
+
+  function contractYearRow(y) {
+    const isCurrent = y.season === CURRENT_SEASON;
+    const salaryText = y.salary != null ? fmtMoney(y.salary) : (y.type ? y.type.replace(/_/g, ' ').toLowerCase() : '—');
+    return `<div class="contract-year-row${isCurrent ? ' current' : ''}" ${isCurrent ? 'data-current="1"' : ''}>
+      <span class="contract-year">${y.season}</span>
+      <span class="contract-year-salary">${salaryText}</span>
+    </div>`;
+  }
+
+  function renderContractSection(record) {
+    const contract = contracts[record.id];
+    const badge = `<span class="card-contract-type">${(contract && contract.contractType) || record.contractType || 'Unknown'}</span>`;
+
+    const realYears = contract ? contract.years.filter(y => y.salary != null) : [];
+    if (!contract || realYears.length <= 1) {
+      return `<div class="card-contract-line">${badge}<span class="card-contract-total">${fmtMoney(record.salary)} in ${CURRENT_SEASON}</span></div>`;
+    }
+
+    const totalLine = contract.totalGuaranteed
+      ? `${fmtMoney(contract.totalGuaranteed)} guaranteed · ${contract.startSeason}–${contract.endSeasonAll}`
+      : `${realYears.length}-year deal`;
+    const rows = contract.years.map(contractYearRow).join('');
+
+    return `<div class="card-contract-box">
+      <div class="card-contract-head">${badge}<span class="card-contract-total">${totalLine}</span></div>
+      <div class="card-contract-years" id="contract-years-scroll">${rows}</div>
+    </div>`;
+  }
+
+  function openPlayerCard(record) {
+    if (!record) return;
+    const colors = teamColors[record.team] || ['#3a4a42', '#1a231e'];
+    const grade = gradeFor(record.compPct);
+    const statSet = record.isBatter ? BATTER_STATS : PITCHER_STATS;
+
+    let fieldingHtml = '';
+    const hasFielding = record.isBatter && FIELDING_STATS.some(s => record.stats[s.key] != null);
+    if (hasFielding) {
+      fieldingHtml = `
+        <div class="card-section-title">Fielding vs. ${record.position} average</div>
+        <div class="card-stats-grid card-stats-grid-3">
+          ${statGrid(record, FIELDING_STATS)}
+        </div>`;
+    }
+
+    let regressionHtml = '';
+    const arrow = regressionArrow(record);
+    if (arrow) {
+      const word = arrow.cls === 'bad' ? 'overperforming, regression likely' : 'underperforming, positive regression likely';
+      const compsNote = record.nComps ? ` · ${record.nComps} historical comps` : '';
+      regressionHtml = `<div class="regression-line ${arrow.cls}"><span class="regression-arrow">${arrow.symbol}</span> ${fmtStatValue(arrow.sig.type, arrow.sig.actual)} ${arrow.sig.label} vs. ${fmtStatValue(arrow.sig.type, arrow.sig.projected)} projected (${word})${compsNote}</div>`;
+    }
+
+    let valueHtml = '';
+    if (!record.isPreArb) {
+      const recPayNote = record.recommendedSalary != null
+        ? `<div class="card-value-note">Recommended pay: <strong>${fmtMoney(record.recommendedSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.paySurplus / 1e6)}M)</div>`
+        : '';
+      valueHtml = `<div class="card-value-box">
+        <div class="card-stat-label">Score</div>
+        ${valueBar(record.score, 100)}
+        <div class="card-value-note">${record.compPct.toFixed(1)}th percentile performance, paid at the ${record.salPct.toFixed(1)}th percentile for ${record.position}</div>
+        ${recPayNote}
+      </div>`;
+    } else if (record.projectedSalary != null) {
+      valueHtml = `<div class="card-value-box">
+        <div class="card-stat-label">Projected Arbitration Value</div>
+        <div class="card-projected">${fmtMoney(record.projectedSalary)}</div>
+      </div>`;
+    }
+
+    const contractHtml = renderContractSection(record);
+
+    document.getElementById('card-root').innerHTML = `
+      <div class="baseball-card" style="--team-1:${colors[0]}; --team-2:${colors[1]};">
+        <button class="card-close" id="card-close-btn" aria-label="Close">✕</button>
+        <div class="card-head">
+          <div class="card-head-top"><span>${record.team}</span><span>2026</span></div>
+          <div class="card-avatar-wrap">
+            <div class="card-avatar">${initials(record.name)}</div>
+            <div class="card-grade-badge">${grade}</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <h2 class="card-name">${record.name}</h2>
+          <div class="card-subline">${record.position} · ${teamNameByAbbr[record.team] || record.team}</div>
+          ${regressionHtml}
+          ${contractHtml}
+          ${valueHtml}
+          <div class="card-section-title">${record.isBatter ? 'Hitting' : 'Pitching'} vs. ${record.position} average</div>
+          <div class="card-stats-grid">${statGrid(record, statSet)}</div>
+          ${fieldingHtml}
+        </div>
+      </div>
+    `;
+    document.getElementById('card-overlay').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    const currentRow = document.querySelector('#contract-years-scroll [data-current="1"]');
+    if (currentRow) currentRow.scrollIntoView({ block: 'center' });
+  }
+  function closeCard() {
+    document.getElementById('card-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+  }
+  document.getElementById('card-overlay-bg').addEventListener('click', closeCard);
+  document.getElementById('card-root').addEventListener('click', e => {
+    if (e.target.id === 'card-close-btn') closeCard();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCard(); });
+
+  // --- Home ---
+  const ICON_PLAYERS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>';
+  const ICON_ROOKIES = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>';
+  const ICON_TEAMS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 9-9 9-9-9z"/></svg>';
+
+  function renderHome() {
+    const totalPayroll = teams.reduce((a, t) => a + t.payroll, 0);
+    const marketPlayers = allPlayers.filter(p => !p.isPreArb);
+    const preArbPlayers = allPlayers.filter(p => p.isPreArb && p.surplus != null);
+    const best = marketPlayers.reduce((a, b) => (b.score > a.score ? b : a));
+    const biggestBargain = preArbPlayers.reduce((a, b) => (b.surplus > a.surplus ? b : a));
+
+    document.getElementById('hero-band').innerHTML = `
+      <div class="kpis">
+        <div class="kpi"><div class="kpi-label">Market-priced players</div><div class="kpi-value truncate">${marketCount}</div><div class="kpi-sub">${teams.length} teams tracked</div></div>
+        <div class="kpi"><div class="kpi-label">Total payroll (tracked)</div><div class="kpi-value truncate">${fmtMoney(totalPayroll)}</div><div class="kpi-sub">sum of scraped contracts</div></div>
+        <div class="kpi"><div class="kpi-label">Best score</div><div class="kpi-value truncate">${best.name}</div><div class="kpi-sub">${best.team} ${best.position} · ${fmtSigned(best.score)}</div></div>
+        <div class="kpi"><div class="kpi-label">Biggest rookie bargain</div><div class="kpi-value truncate">${biggestBargain.name}</div><div class="kpi-sub">${biggestBargain.team} ${biggestBargain.position} · +${fmtMoney(biggestBargain.surplus)} proj.</div></div>
+      </div>
+    `;
+
+    const cards = [
+      {
+        tab: 'players', icon: ICON_PLAYERS, title: 'Players',
+        desc: 'Every market-priced player ranked by performance percentile vs. salary percentile, position by position.',
+        teaser: `Best score: ${best.name} (${best.team} ${best.position}) → ${fmtSigned(best.score)}`,
+      },
+      {
+        tab: 'rookies', icon: ICON_ROOKIES, title: 'Rookies',
+        desc: 'Pre-arbitration players are paid near the league minimum by rule, not by performance — so they get a projected market salary instead of a value score.',
+        teaser: `Biggest bargain: ${biggestBargain.name} (${biggestBargain.team}) → +${fmtMoney(biggestBargain.surplus)} proj.`,
+      },
+      {
+        tab: 'teams', icon: ICON_TEAMS, title: 'Teams',
+        desc: "Payroll totals and average roster score per team — click through to a diamond view of who's playing where.",
+        teaser: `${teams.length} teams · ${fmtMoney(totalPayroll)} tracked payroll`,
+      },
+    ];
+    document.getElementById('section-cards').innerHTML = cards.map(c => `
+      <button class="section-card" data-tab="${c.tab}">
+        <div class="card-icon">${c.icon}</div>
+        <div class="card-title">${c.title}</div>
+        <div class="card-desc">${c.desc}</div>
+        <div class="card-teaser">${c.teaser}</div>
+        <div class="card-cta">Browse ${c.title.toLowerCase()} →</div>
+      </button>
+    `).join('');
+
+    const topUnderpaid = [...marketPlayers].sort((a, b) => b.score - a.score).slice(0, 5);
+    document.getElementById('preview-underpaid').innerHTML = topUnderpaid.map(p => `
+      <div class="preview-row">
+        <span class="preview-row-name">${p.name} <span class="preview-row-tag">${p.team} · ${p.position}</span></span>
+        <span class="preview-row-val good">${fmtSigned(p.score)}</span>
+      </div>
+    `).join('');
+
+    const topRookies = [...preArbPlayers].sort((a, b) => b.surplus - a.surplus).slice(0, 5);
+    document.getElementById('preview-rookies').innerHTML = topRookies.map(p => `
+      <div class="preview-row">
+        <span class="preview-row-name">${p.name} <span class="preview-row-tag">${p.team} · ${p.position}</span></span>
+        <span class="preview-row-val proj">+${fmtMoney(p.surplus)}</span>
+      </div>
+    `).join('');
+
+    const topTeams = [...teams].sort((a, b) => b.payroll - a.payroll).slice(0, 5);
+    document.getElementById('preview-teams').innerHTML = topTeams.map(t => `
+      <div class="preview-row">
+        <span class="preview-row-name">${t.name} <span class="preview-row-tag">${t.abbr}</span></span>
+        <span class="preview-row-val">${fmtMoney(t.payroll)}</span>
+      </div>
+    `).join('');
+  }
+
+  // --- Players tab ---
+  const POSITIONS = ['All', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'SP', 'RP'];
+  let activePos = 'All';
+  let playerSort = { key: 'score', dir: 'desc' };
+
+  document.getElementById('pos-chips').innerHTML = POSITIONS.map(p =>
+    `<button class="chip${p === 'All' ? ' active' : ''}" data-pos="${p}">${p}</button>`
+  ).join('');
+
+  function renderPlayers() {
+    const q = document.getElementById('player-search').value.trim().toLowerCase();
+    let rows = allPlayers.filter(p =>
+      !p.isPreArb &&
+      (activePos === 'All' || p.position === activePos) &&
+      (q === '' || matchesTeamQuery(p, q))
+    );
+    rows.sort((a, b) => {
+      const k = playerSort.key;
+      const va = a[k], vb = b[k];
+      const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+      return playerSort.dir === 'asc' ? cmp : -cmp;
+    });
+    document.getElementById('player-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for their card' : '');
+    const maxAbs = 100;
+    document.getElementById('player-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
+      <tr class="row-toggle" data-idx="${i}">
+        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td class="num">${fmtMoney(p.salary)}</td>
+        <td class="num">${p.compPct.toFixed(1)}</td>
+        <td class="num">${p.salPct.toFixed(1)}</td>
+        <td class="num">${fmtMoney(p.recommendedSalary)}</td>
+        <td class="num">${valueBar(p.score, maxAbs)}</td>
+      </tr>`
+    ).join('') : `<tr><td colspan="6"><div class="empty">No players match that search.</div></td></tr>`;
+    playerRowsCurrent = rows;
+  }
+  let playerRowsCurrent = [];
+
+  document.getElementById('player-rows').addEventListener('click', e => {
+    const row = e.target.closest('.row-toggle');
+    if (!row) return;
+    openPlayerCard(playerRowsCurrent[Number(row.dataset.idx)]);
+  });
+
+  document.getElementById('player-search').addEventListener('input', renderPlayers);
+  document.getElementById('pos-chips').addEventListener('click', e => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    activePos = btn.dataset.pos;
+    document.querySelectorAll('#pos-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
+    renderPlayers();
+  });
+
+  // --- Rookies tab (pre-arb / MiLB, projected salary instead of value score) ---
+  let activeRookiePos = 'All';
+  let rookieSort = { key: 'surplus', dir: 'desc' };
+
+  document.getElementById('rookie-pos-chips').innerHTML = POSITIONS.map(p =>
+    `<button class="chip${p === 'All' ? ' active' : ''}" data-pos="${p}">${p}</button>`
+  ).join('');
+
+  function surplusBar(surplus, max) {
+    const pct = Math.min(surplus / max, 1) * 100;
+    return `<div class="bar-cell">
+      <div class="bar-track"><div class="bar-fill good" style="left:0; width:${pct}%;"></div></div>
+      <span class="value-num good">${fmtMoney(surplus)}</span>
+    </div>`;
+  }
+
+  function renderRookies() {
+    const q = document.getElementById('rookie-search').value.trim().toLowerCase();
+    let rows = allPlayers.filter(p =>
+      p.isPreArb &&
+      (activeRookiePos === 'All' || p.position === activeRookiePos) &&
+      (q === '' || matchesTeamQuery(p, q))
+    );
+    rows.sort((a, b) => {
+      const k = rookieSort.key;
+      const va = a[k], vb = b[k];
+      const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+      return rookieSort.dir === 'asc' ? cmp : -cmp;
+    });
+    document.getElementById('rookie-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for their card' : '');
+    const allSurplus = allPlayers.filter(p => p.isPreArb && p.surplus != null).map(p => p.surplus);
+    const maxSurplus = Math.max(...allSurplus, 1);
+    document.getElementById('rookie-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
+      <tr class="row-toggle" data-idx="${i}">
+        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td class="num">${fmtMoney(p.salary)}</td>
+        <td class="num">${p.compPct.toFixed(1)}</td>
+        <td class="num">${fmtMoney(p.projectedSalary)}</td>
+        <td class="num">${surplusBar(p.surplus, maxSurplus)}</td>
+      </tr>`
+    ).join('') : `<tr><td colspan="5"><div class="empty">No prospects match that search.</div></td></tr>`;
+    rookieRowsCurrent = rows;
+  }
+  let rookieRowsCurrent = [];
+
+  document.getElementById('rookie-rows').addEventListener('click', e => {
+    const row = e.target.closest('.row-toggle');
+    if (!row) return;
+    openPlayerCard(rookieRowsCurrent[Number(row.dataset.idx)]);
+  });
+
+  document.getElementById('rookie-search').addEventListener('input', renderRookies);
+  document.getElementById('rookie-pos-chips').addEventListener('click', e => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    activeRookiePos = btn.dataset.pos;
+    document.querySelectorAll('#rookie-pos-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
+    renderRookies();
+  });
+
+  document.querySelectorAll('#rookies-view thead th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      rookieSort.dir = rookieSort.key === key && rookieSort.dir === 'desc' ? 'asc' : 'desc';
+      rookieSort.key = key;
+      renderRookies();
+    });
+  });
+
+  // --- Teams tab ---
+  let teamSort = { key: 'payroll', dir: 'desc' };
+  // Roughly true-to-position layout on a 0 0 640 620 field, home plate at bottom.
+  const POSITION_COORDS = {
+    C:  { x: 320, y: 522 }, SP: { x: 320, y: 430 }, '1B': { x: 445, y: 428 },
+    '2B': { x: 320, y: 328 }, '3B': { x: 195, y: 428 }, SS: { x: 258, y: 372 },
+    LF: { x: 140, y: 208 }, CF: { x: 320, y: 128 }, RF: { x: 500, y: 208 },
+    DH: { x: 566, y: 556 }, RP: { x: 74, y: 556 },
+  };
+  const ON_FIELD = new Set(['C', 'SP', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']);
+
+  function initials(name) {
+    const parts = name.replace(/[^\w\s.]/g, '').split(' ').filter(Boolean);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+
+  function scoreLabel(record) {
+    if (!record) return { text: '—', cls: 'empty' };
+    if (record.isPreArb) return { text: '+' + fmtMoney(record.surplus) + ' proj', cls: 'proj' };
+    return { text: fmtSigned(record.score), cls: record.score >= 0 ? 'good' : 'bad' };
+  }
+
+  function posMarker(pos, rosterEntry) {
+    const c = POSITION_COORDS[pos];
+    const r = 26;
+    const record = rosterEntry ? findPlayerRecord(rosterEntry.id, pos) : null;
+    if (!record) {
+      return `<g class="pos-marker">
+        <circle cx="${c.x}" cy="${c.y}" r="${r}" fill="none" stroke="var(--border)" stroke-width="2" stroke-dasharray="4 4" />
+        <text x="${c.x}" y="${c.y + 4}" text-anchor="middle" class="pos-tag" font-size="11">${pos}</text>
+        <text x="${c.x}" y="${c.y + r + 16}" text-anchor="middle" class="pos-score empty">no qualified player</text>
+      </g>`;
+    }
+    const score = scoreLabel(record);
+    const fillHue = record.isPreArb ? 'var(--accent)' : (record.score >= 0 ? 'var(--good)' : 'var(--bad)');
+    const nameShort = record.name.length > 16 ? record.name.split(' ').pop() : record.name;
+    return `<g class="pos-marker" data-pid="${record.id}" data-pos="${pos}">
+      <circle class="pos-avatar-ring" cx="${c.x}" cy="${c.y}" r="${r}" fill="${fillHue}" fill-opacity="0.9" />
+      <text x="${c.x}" y="${c.y + 5}" text-anchor="middle" class="pos-initials">${initials(record.name)}</text>
+      <text x="${c.x}" y="${c.y - r - 8}" text-anchor="middle" class="pos-tag">${pos}</text>
+      <text x="${c.x}" y="${c.y + r + 16}" text-anchor="middle" class="pos-name">${nameShort}</text>
+      <text x="${c.x}" y="${c.y + r + 30}" text-anchor="middle" class="pos-score ${score.cls}">${score.text}</text>
+    </g>`;
+  }
+
+  function renderDiamondSvg(teamAbbr) {
+    const roster = rosters[teamAbbr] || {};
+    const markers = Object.keys(POSITION_COORDS).map(pos => posMarker(pos, roster[pos])).join('');
+    return `<svg viewBox="0 0 640 620" class="diamond-svg" role="img" aria-label="${teamAbbr} field diagram">
+      <rect x="0" y="0" width="640" height="620" fill="var(--field-grass)" />
+      <polygon points="320,60 560,430 320,600 80,430" fill="var(--field-infield)" />
+      <line x1="320" y1="560" x2="60" y2="200" stroke="var(--field-line)" stroke-width="2" />
+      <line x1="320" y1="560" x2="580" y2="200" stroke="var(--field-line)" stroke-width="2" />
+      <polygon points="320,560 445,428 320,328 195,428" fill="none" stroke="var(--field-dirt)" stroke-width="34" stroke-linejoin="round" />
+      <circle cx="320" cy="430" r="16" fill="var(--field-dirt)" />
+      <rect x="308" y="548" width="24" height="24" fill="var(--field-base)" transform="rotate(45 320 560)" />
+      <rect x="433" y="416" width="20" height="20" fill="var(--field-base)" transform="rotate(45 445 428)" />
+      <rect x="308" y="316" width="20" height="20" fill="var(--field-base)" transform="rotate(45 320 328)" />
+      <rect x="183" y="416" width="20" height="20" fill="var(--field-base)" transform="rotate(45 195 428)" />
+      ${markers}
+    </svg>`;
+  }
+
+  function renderDiamondPanel(team) {
+    return `<tr class="diamond-row"><td colspan="4"><div class="diamond-panel">
+      <div class="diamond-head">
+        <h3>${team.name} — 2026 roster by position</h3>
+        <span class="diamond-sub">Top player by playing time at each spot (min. 150 PA / 50 IP)</span>
+      </div>
+      <div class="diamond-wrap">${renderDiamondSvg(team.abbr)}</div>
+      <div class="diamond-legend">
+        <span><span class="legend-dot" style="background:var(--good)"></span>Underpaid (value score)</span>
+        <span><span class="legend-dot" style="background:var(--bad)"></span>Overpaid (value score)</span>
+        <span><span class="legend-dot" style="background:var(--accent)"></span>Pre-arb — projected surplus</span>
+      </div>
+    </div></td></tr>`;
+  }
+
+  let expandedTeam = null;
+
+  function renderTeams() {
+    const q = document.getElementById('team-search').value.trim().toLowerCase();
+    let rows = teams.filter(t => q === '' || t.name.toLowerCase().includes(q) || t.abbr.toLowerCase().includes(q));
+    rows.sort((a, b) => {
+      const k = teamSort.key;
+      const va = k === 'name' ? a.name : a[k];
+      const vb = k === 'name' ? b.name : b[k];
+      const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+      return teamSort.dir === 'asc' ? cmp : -cmp;
+    });
+    document.getElementById('team-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a team to see the roster' : '');
+    const maxAbs = Math.max(...teams.map(t => Math.abs(t.avgScore)), 1);
+    document.getElementById('team-rows').innerHTML = rows.map(t => {
+      const open = expandedTeam === t.abbr;
+      const row = `
+      <tr class="row-toggle" data-abbr="${t.abbr}">
+        <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${t.name}</span><span class="team-tag">${t.abbr}</span></div></td>
+        <td>${t.division}</td>
+        <td class="num">${fmtMoney(t.payroll)}</td>
+        <td class="num">${valueBar(t.avgScore, maxAbs)}</td>
+      </tr>`;
+      return row + (open ? renderDiamondPanel(t) : '');
+    }).join('');
+  }
+  document.getElementById('team-search').addEventListener('input', renderTeams);
+  document.getElementById('team-rows').addEventListener('click', e => {
+    const marker = e.target.closest('.pos-marker');
+    if (marker && marker.dataset.pid) {
+      const record = findPlayerRecord(Number(marker.dataset.pid), marker.dataset.pos);
+      if (record) openPlayerCard(record);
+      return;
+    }
+    const row = e.target.closest('.row-toggle');
+    if (!row) return;
+    const abbr = row.dataset.abbr;
+    expandedTeam = expandedTeam === abbr ? null : abbr;
+    renderTeams();
+  });
+
+  // --- Weighted composite scoring engine (this is the site's single source
+  // of truth: every score/grade/value/projected-salary everywhere reads back
+  // off the player objects that recomputeAll() below writes into) ---
+  const BATTER_STAT_CONFIG = [
+    { key: 'xwoba', label: 'xwOBA', higherBetter: true, defaultWeight: 3.0, type: 'avg3' },
+    { key: 'xba', label: 'xBA', higherBetter: true, defaultWeight: 1.0, type: 'avg3' },
+    { key: 'xslg', label: 'xSLG', higherBetter: true, defaultWeight: 1.5, type: 'avg3' },
+    { key: 'barrel_rate', label: 'Barrel%', higherBetter: true, defaultWeight: 1.5, type: 'pct1' },
+    { key: 'hard_hit_rate', label: 'Hard-Hit%', higherBetter: true, defaultWeight: 1.0, type: 'pct1' },
+    { key: 'chase_rate', label: 'Chase%', higherBetter: false, defaultWeight: 1.0, type: 'fracPct1' },
+    { key: 'whiff_rate', label: 'Whiff%', higherBetter: false, defaultWeight: 1.0, type: 'fracPct1' },
+    { key: 'k_rate', label: 'K%', higherBetter: false, defaultWeight: 1.0, type: 'fracPct1' },
+    { key: 'bb_rate', label: 'BB%', higherBetter: true, defaultWeight: 1.0, type: 'fracPct1' },
+    { key: 'oaa', label: 'OAA', higherBetter: true, defaultWeight: 0.7, type: 'int' },
+    { key: 'frv', label: 'FRV', higherBetter: true, defaultWeight: 0.7, type: 'int' },
+    { key: 'drs', label: 'DRS', higherBetter: true, defaultWeight: 0.7, type: 'int' },
+  ];
+  const PITCHER_STAT_CONFIG = [
+    { key: 'xera', label: 'xERA', higherBetter: false, defaultWeight: 2.0, type: 'rate2' },
+    { key: 'xba_against', label: 'xBA Allowed', higherBetter: false, defaultWeight: 1.0, type: 'avg3' },
+    { key: 'avg_exit_velo_against', label: 'Avg Exit Velo Allowed', higherBetter: false, defaultWeight: 0.8, type: 'velo1' },
+    { key: 'hard_hit_rate_against', label: 'Hard-Hit% Allowed', higherBetter: false, defaultWeight: 1.0, type: 'pct1' },
+    { key: 'barrel_rate_against', label: 'Barrel% Allowed', higherBetter: false, defaultWeight: 1.2, type: 'pct1' },
+    { key: 'k_rate', label: 'K%', higherBetter: true, defaultWeight: 1.5, type: 'fracPct1' },
+    { key: 'bb_rate', label: 'BB%', higherBetter: false, defaultWeight: 1.0, type: 'fracPct1' },
+    { key: 'chase_rate', label: 'Chase% Induced', higherBetter: true, defaultWeight: 1.0, type: 'fracPct1' },
+    { key: 'whiff_rate', label: 'Whiff% Induced', higherBetter: true, defaultWeight: 1.0, type: 'fracPct1' },
+    { key: 'z_swing_rate', label: 'Z-Swing% Induced', higherBetter: false, defaultWeight: 0.5, type: 'fracPct1' },
+    { key: 'extension', label: 'Extension', higherBetter: true, defaultWeight: 1.0, type: 'velo1' },
+    { key: 'stuff_plus', label: 'Stuff+', higherBetter: true, defaultWeight: 1.5, type: 'int' },
+    { key: 'location_plus', label: 'Location+', higherBetter: true, defaultWeight: 1.5, type: 'int' },
+  ];
+  const battingWeights = {};
+  BATTER_STAT_CONFIG.forEach(s => { battingWeights[s.key] = s.defaultWeight; });
+  const pitchingWeights = {};
+  PITCHER_STAT_CONFIG.forEach(s => { pitchingWeights[s.key] = s.defaultWeight; });
+  const DEFAULT_PAY_WEIGHT = 1.0;
+  let payWeight = DEFAULT_PAY_WEIGHT;
+
+  function fmtStatValueExt(type, v) {
+    if (v == null) return '—';
+    if (type === 'fracPct1') return (v * 100).toFixed(1) + '%';
+    return fmtStatValue(type, v);
+  }
+
+  // How much weight the Marcel-style multi-year projection gets when anchoring
+  // a pre-arb player's salary comps, vs. their compPct from this season alone.
+  const PROJECTION_BLEND = 0.3;
+
+  // Percentile-point decay scale for comp weighting below: weight =
+  // e^(-distance / PROXIMITY_SCALE). Exponential rather than inverse (1/d) --
+  // MLB pay is bimodal (lots of cost-controlled arms, a separate cluster of
+  // paid aces, not much between), so a slowly-decaying tail lets the much
+  // more numerous cheap comps quietly outvote a thin cluster of expensive
+  // ones even at long range. Exponential decay keeps the "no hard cutoff"
+  // benefit but drops distant comps' influence fast enough that they stop
+  // mattering well before that happens.
+  const PROXIMITY_SCALE = 8;
+
+  // A player at the extreme edge of a position's performance distribution
+  // (e.g. dead last) can have almost no market-priced peers nearby -- the
+  // closest "comp" might be 10+ percentile points away. At the default
+  // scale, that one comp can end up carrying most of the weight, so the
+  // "recommended pay" becomes whatever that single closest player happens to
+  // earn, not a real market consensus. MIN_EFFECTIVE_COMPS guards against
+  // that: if too few comps are meaningfully contributing, the scale widens
+  // until enough real signal is pulled in, capped at PROXIMITY_SCALE_MAX.
+  const MIN_EFFECTIVE_COMPS = 5;
+  const PROXIMITY_SCALE_GROWTH = 1.4;
+  const PROXIMITY_SCALE_MAX = 40;
+
+  // Kish's effective sample size: (sum w)^2 / sum(w^2). Equals the plain
+  // count when every weight is equal, and collapses toward 1 when one weight
+  // dominates the rest -- a direct measure of "how many comps are actually
+  // doing the work," not just how many are technically nonzero.
+  function effectiveSampleSize(weights) {
+    const sum = weights.reduce((a, w) => a + w, 0);
+    const sumSq = weights.reduce((a, w) => a + w * w, 0);
+    return sumSq > 0 ? (sum * sum) / sumSq : 0;
+  }
+
+  // Weighted median: sort by value, walk the cumulative weight, return the
+  // value where it crosses half the total weight. Distance-weighting an
+  // average is easy but lets one huge outlier drag the whole result; a
+  // weighted median keeps that same outlier-resistance a plain median has,
+  // just letting nearby comps count more than far ones instead of counting
+  // everyone inside a window equally and everyone outside it not at all.
+  function weightedMedian(items, valueKey, weightKey) {
+    if (!items.length) return null;
+    const sorted = [...items].sort((a, b) => a[valueKey] - b[valueKey]);
+    const totalWeight = sorted.reduce((s, it) => s + it[weightKey], 0);
+    let cumulative = 0;
+    for (const it of sorted) {
+      cumulative += it[weightKey];
+      if (cumulative >= totalWeight / 2) return it[valueKey];
+    }
+    return sorted[sorted.length - 1][valueKey];
+  }
+
+  // Proximity-weighted median with an adaptively widening scale: starts at
+  // PROXIMITY_SCALE and widens (by PROXIMITY_SCALE_GROWTH each step) until
+  // the effective sample size clears MIN_EFFECTIVE_COMPS or the scale hits
+  // PROXIMITY_SCALE_MAX, whichever comes first.
+  function adaptiveCompMedian(pool, anchorPct, valueKey) {
+    let scale = PROXIMITY_SCALE;
+    let weights;
+    while (true) {
+      weights = pool.map(m => Math.exp(-Math.abs(m.compPct - anchorPct) / scale));
+      if (effectiveSampleSize(weights) >= MIN_EFFECTIVE_COMPS || scale >= PROXIMITY_SCALE_MAX) break;
+      scale *= PROXIMITY_SCALE_GROWTH;
+    }
+    const items = pool.map((m, i) => ({ value: m[valueKey], weight: weights[i] }));
+    return weightedMedian(items, 'value', 'weight');
+  }
+
+  function recomputeAll() {
+    allPlayers.forEach(p => {
+      const cfg = p.isBatter ? BATTER_STAT_CONFIG : PITCHER_STAT_CONFIG;
+      const w = p.isBatter ? battingWeights : pitchingWeights;
+      const posStats = positionStats[p.position] || {};
+      let total = 0;
+      const breakdown = cfg.map(s => {
+        const val = p.stats[s.key];
+        const ps = posStats[s.key];
+        let z = null, contribution = 0;
+        if (val != null && ps && ps.std > 0) {
+          const rawZ = (val - ps.mean) / ps.std;
+          z = s.higherBetter ? rawZ : -rawZ;
+          contribution = z * w[s.key];
+          total += contribution;
+        }
+        return { ...s, value: val, z, contribution };
+      });
+      // rawScore is the pure stat-weighted composite (no pay). p.score, set
+      // below, is the single number shown everywhere on the site: rawScore
+      // converted to a percentile and blended with the salary percentile.
+      p.rawScore = total;
+      p.breakdown = breakdown;
+    });
+
+    const byPos = {};
+    allPlayers.forEach(p => { (byPos[p.position] = byPos[p.position] || []).push(p); });
+
+    Object.values(byPos).forEach(group => {
+      const byRaw = [...group].sort((a, b) => a.rawScore - b.rawScore);
+      byRaw.forEach((p, i) => {
+        p.compPct = byRaw.length > 1 ? (i / (byRaw.length - 1)) * 100 : 100;
+        p.grade = gradeFor(p.compPct);
+      });
+
+      const marketGroup = group.filter(p => !p.isPreArb);
+      const bySalary = [...marketGroup].sort((a, b) => a.aav - b.aav);
+      bySalary.forEach((p, i) => {
+        p.salPct = bySalary.length > 1 ? (i / (bySalary.length - 1)) * 100 : 100;
+        p.score = p.compPct - payWeight * p.salPct;
+      });
+
+      // Rank players by their blended (Marcel + comparable-player) projected
+      // true-talent value (xwoba for batters, xera for pitchers) wherever a
+      // projection exists, so the pre-arb salary anchor below can lean on
+      // multi-year, sample-size-, age-, and peer-outcome-adjusted history
+      // instead of only this season's small sample.
+      const isBatterGroup = group[0] && group[0].isBatter;
+      const projKey = isBatterGroup ? 'xwoba' : 'xera';
+      const higherBetterProj = isBatterGroup;
+      const withProj = group.filter(p => p.projected && p.projected[projKey] != null);
+      const byProj = [...withProj].sort((a, b) => higherBetterProj
+        ? a.projected[projKey] - b.projected[projKey]
+        : b.projected[projKey] - a.projected[projKey]);
+      byProj.forEach((p, i) => {
+        p.projectedPct = byProj.length > 1 ? (i / (byProj.length - 1)) * 100 : 100;
+      });
+
+      // Pre-arbitration players are paid at/near the league minimum by CBA
+      // rule, not by the market, so there's no meaningful salary percentile
+      // to blend in -- their score is just their performance percentile.
+      group.filter(p => p.isPreArb).forEach(p => {
+        p.salPct = null;
+        p.score = p.compPct;
+      });
+
+      // Recommended pay: what a player's performance level says they're
+      // worth, in dollars -- the median AAV of market-priced peers performing
+      // at a similar level. Computed for every player (market and pre-arb
+      // alike), not just rookies, so it doubles as a plain-dollar complement
+      // to Score for market players too ("performs like $30M, paid $8M").
+      group.forEach(p => {
+        if (marketGroup.length === 0) { p.recommendedSalary = null; p.paySurplus = null; return; }
+        // Blend in the multi-year projection (when available) so the number
+        // isn't purely a bet on one season's small sample.
+        const anchorPct = p.projectedPct != null
+          ? (1 - PROJECTION_BLEND) * p.compPct + PROJECTION_BLEND * p.projectedPct
+          : p.compPct;
+        const compPool = marketGroup.filter(m => m !== p);
+        if (compPool.length === 0) { p.recommendedSalary = null; p.paySurplus = null; return; }
+        const median = adaptiveCompMedian(compPool, anchorPct, 'aav');
+        p.recommendedSalary = median;
+        p.paySurplus = median - p.aav;
+      });
+
+      // Pre-arb players keep the old field names too (card/Rookies-tab code
+      // reads projectedSalary/surplus) -- same numbers, just aliased.
+      group.filter(p => p.isPreArb).forEach(p => {
+        p.projectedSalary = p.recommendedSalary;
+        p.surplus = p.paySurplus;
+      });
+    });
+
+    teams.forEach(t => {
+      const roster = allPlayers.filter(p => p.team === t.abbr && !p.isPreArb && p.score != null);
+      t.avgScore = roster.length ? roster.reduce((a, p) => a + p.score, 0) / roster.length : 0;
+    });
+  }
+
+  function buildWeightPanel(containerId, statConfig, weightsObj) {
+    document.getElementById(containerId).innerHTML = statConfig.map(s => `
+      <div class="weight-row">
+        <span class="weight-label">${s.label}<span class="direction">${s.higherBetter ? 'higher is better' : 'lower is better'}</span></span>
+        <input type="range" min="0" max="3" step="0.1" value="${s.defaultWeight}" data-stat="${s.key}" />
+        <span class="weight-value" id="weight-val-${containerId}-${s.key}">${weightsObj[s.key].toFixed(1)}</span>
+      </div>
+    `).join('');
+  }
+  buildWeightPanel('weight-panel-bat', BATTER_STAT_CONFIG, battingWeights);
+  buildWeightPanel('weight-panel-pit', PITCHER_STAT_CONFIG, pitchingWeights);
+
+  function wireWeightPanel(containerId, statConfig, weightsObj) {
+    document.getElementById(containerId).addEventListener('input', e => {
+      const input = e.target.closest('input[type="range"]');
+      if (!input) return;
+      const key = input.dataset.stat;
+      weightsObj[key] = parseFloat(input.value);
+      document.getElementById('weight-val-' + containerId + '-' + key).textContent = weightsObj[key].toFixed(1);
+      recomputeAll();
+      renderAll();
+    });
+  }
+  wireWeightPanel('weight-panel-bat', BATTER_STAT_CONFIG, battingWeights);
+  wireWeightPanel('weight-panel-pit', PITCHER_STAT_CONFIG, pitchingWeights);
+
+  document.getElementById('reset-bat-weights').addEventListener('click', () => {
+    BATTER_STAT_CONFIG.forEach(s => { battingWeights[s.key] = s.defaultWeight; });
+    buildWeightPanel('weight-panel-bat', BATTER_STAT_CONFIG, battingWeights);
+    recomputeAll();
+    renderAll();
+  });
+  document.getElementById('reset-pit-weights').addEventListener('click', () => {
+    PITCHER_STAT_CONFIG.forEach(s => { pitchingWeights[s.key] = s.defaultWeight; });
+    buildWeightPanel('weight-panel-pit', PITCHER_STAT_CONFIG, pitchingWeights);
+    recomputeAll();
+    renderAll();
+  });
+
+  // Pay is the one non-stat lever: how hard salary pulls a market player's
+  // final Score down from their pure performance percentile. It's a single
+  // shared slider (not split by batting/pitching) since it's applied the
+  // same way -- compPct - payWeight * salPct -- to every market player.
+  function buildPayPanel() {
+    document.getElementById('weight-panel-pay').innerHTML = `
+      <div class="weight-row">
+        <span class="weight-label">Pay<span class="direction">higher = salary pulls score down harder</span></span>
+        <input type="range" min="0" max="3" step="0.1" value="${payWeight}" data-stat="pay" />
+        <span class="weight-value" id="weight-val-pay">${payWeight.toFixed(1)}</span>
+      </div>`;
+  }
+  buildPayPanel();
+  document.getElementById('weight-panel-pay').addEventListener('input', e => {
+    const input = e.target.closest('input[type="range"]');
+    if (!input) return;
+    payWeight = parseFloat(input.value);
+    document.getElementById('weight-val-pay').textContent = payWeight.toFixed(1);
+    recomputeAll();
+    renderAll();
+  });
+  document.getElementById('reset-pay-weight').addEventListener('click', () => {
+    payWeight = DEFAULT_PAY_WEIGHT;
+    buildPayPanel();
+    recomputeAll();
+    renderAll();
+  });
+
+  let activeCustomPos = 'All';
+  let customSort = { key: 'score', dir: 'desc' };
+  const expandedCustomIds = new Set();
+  document.getElementById('custom-pos-chips').innerHTML = POSITIONS.map(p =>
+    `<button class="chip${p === 'All' ? ' active' : ''}" data-pos="${p}">${p}</button>`
+  ).join('');
+
+  // Two-way players share an id across their batting/pitching rows, so the
+  // expand/collapse state needs the position folded into the key too.
+  function customRowKey(p) { return p.id + ':' + p.position; }
+
+  function customDetailRow(p) {
+    const w = p.isBatter ? battingWeights : pitchingWeights;
+    const rows = p.breakdown.map(s => {
+      const cls = s.z == null ? '' : (s.contribution >= 0 ? 'good' : 'bad');
+      return `<div class="preview-row">
+        <span class="preview-row-name">${s.label}</span>
+        <span class="preview-row-tag">${fmtStatValueExt(s.type, s.value)} · z=${s.z == null ? '—' : s.z.toFixed(2)} · ×${w[s.key].toFixed(1)}</span>
+        <span class="preview-row-val ${cls}">${s.z == null ? '—' : fmtSigned(s.contribution)}</span>
+      </div>`;
+    }).join('');
+    const payRow = p.isPreArb
+      ? `<div class="preview-row">
+          <span class="preview-row-name">Pay</span>
+          <span class="preview-row-tag">pre-arbitration — paid near league minimum by rule, no pay adjustment applied</span>
+          <span class="preview-row-val">—</span>
+        </div>`
+      : `<div class="preview-row">
+          <span class="preview-row-name">Pay</span>
+          <span class="preview-row-tag">${fmtMoney(p.aav)} AAV · ${p.salPct.toFixed(1)}th percentile · ×${payWeight.toFixed(1)}</span>
+          <span class="preview-row-val bad">−${(payWeight * p.salPct).toFixed(1)}</span>
+        </div>`;
+    const formula = p.isPreArb
+      ? `Score = performance percentile = <span class="${p.score >= 0 ? 'good' : 'bad'}">${fmtSigned(p.score)}</span>`
+      : `Score = ${p.compPct.toFixed(1)} − (${payWeight.toFixed(1)} × ${p.salPct.toFixed(1)}) = <span class="${p.score >= 0 ? 'good' : 'bad'}">${fmtSigned(p.score)}</span>`;
+    return `<tr class="detail-row"><td colspan="6"><div class="detail-inner">${rows}
+      <div class="detail-formula">Raw performance subtotal = ${fmtSigned(p.rawScore)} → <span class="${p.compPct >= 50 ? 'good' : 'bad'}">${p.compPct.toFixed(1)}th</span> percentile at ${p.position}</div>
+      ${payRow}
+      <div class="detail-formula">${formula}</div>
+    </div></td></tr>`;
+  }
+
+  function renderCustomScore() {
+    let rows = allPlayers.filter(p => activeCustomPos === 'All' || p.position === activeCustomPos);
+    rows.sort((a, b) => {
+      const k = customSort.key === 'percentile' ? 'compPct' : customSort.key;
+      const va = k === 'name' ? a.name : a[k];
+      const vb = k === 'name' ? b.name : b[k];
+      const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+      return customSort.dir === 'asc' ? cmp : -cmp;
+    });
+
+    document.getElementById('custom-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for the breakdown' : '');
+    document.getElementById('custom-rows').innerHTML = rows.length ? rows.map((p, i) => {
+      const open = expandedCustomIds.has(customRowKey(p));
+      const row = `
+      <tr class="row-toggle" data-idx="${i}">
+        <td class="num">${i + 1}</td>
+        <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}</span><span class="team-tag">${p.team}</span></div></td>
+        <td><span class="pos-pill">${p.position}</span></td>
+        <td class="num ${p.score >= 0 ? 'good' : 'bad'}">${fmtSigned(p.score)}</td>
+        <td class="num">${p.compPct.toFixed(1)}</td>
+        <td>${p.grade}</td>
+      </tr>`;
+      return row + (open ? customDetailRow(p) : '');
+    }).join('') : `<tr><td colspan="6"><div class="empty">No players at this position.</div></td></tr>`;
+    customRowsCurrent = rows;
+  }
+  let customRowsCurrent = [];
+
+  document.getElementById('custom-rows').addEventListener('click', e => {
+    const row = e.target.closest('.row-toggle');
+    if (!row) return;
+    const p = customRowsCurrent[Number(row.dataset.idx)];
+    const key = customRowKey(p);
+    if (expandedCustomIds.has(key)) expandedCustomIds.delete(key); else expandedCustomIds.add(key);
+    renderCustomScore();
+  });
+  document.getElementById('custom-pos-chips').addEventListener('click', e => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    activeCustomPos = btn.dataset.pos;
+    document.querySelectorAll('#custom-pos-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
+    renderCustomScore();
+  });
+  document.querySelectorAll('#custom-view thead th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      customSort.dir = customSort.key === key && customSort.dir === 'desc' ? 'asc' : 'desc';
+      customSort.key = key;
+      renderCustomScore();
+    });
+  });
+
+  // --- Sorting (shared header click handling) ---
+  document.querySelectorAll('#players-view thead th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      playerSort.dir = playerSort.key === key && playerSort.dir === 'desc' ? 'asc' : 'desc';
+      playerSort.key = key;
+      renderPlayers();
+    });
+  });
+  document.querySelectorAll('#teams-view thead th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      teamSort.dir = teamSort.key === key && teamSort.dir === 'desc' ? 'asc' : 'desc';
+      teamSort.key = key;
+      renderTeams();
+    });
+  });
+
+  // --- Sidebar nav ---
+  const TAB_VIEWS = ['home', 'players', 'rookies', 'teams', 'custom'];
+  function switchTab(name) {
+    document.querySelectorAll('.nav-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    TAB_VIEWS.forEach(v => {
+      document.getElementById(v + '-view').style.display = v === name ? '' : 'none';
+    });
+    document.querySelector('.main-content')?.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  document.querySelectorAll('.nav-item').forEach(tab => {
+    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  });
+  document.querySelectorAll('.preview-link').forEach(el => {
+    el.addEventListener('click', () => switchTab(el.dataset.tab));
+  });
+  // section-card buttons are rendered dynamically by renderHome(), so this needs
+  // event delegation on the (static) container rather than a direct listener.
+  document.getElementById('section-cards').addEventListener('click', e => {
+    const card = e.target.closest('.section-card');
+    if (card) switchTab(card.dataset.tab);
+  });
+
+  function renderAll() {
+    renderHome();
+    renderPlayers();
+    renderRookies();
+    renderTeams();
+    renderCustomScore();
+  }
+
+  recomputeAll();
+  renderAll();
+</script>

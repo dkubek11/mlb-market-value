@@ -4,9 +4,11 @@ from app.pipeline.utils import clean_nan
 
 # Same undocumented internal API used for DRS and batting plate discipline.
 # The pitching leaderboard carries K%/BB% (computed off batters faced, not
-# available from the MLB Stats API's per-9 rates) and induced plate-discipline
-# rates (O-Swing%/chase, SwStr%/whiff) that aren't in Statcast or the MLB Stats
-# API at all. Values come back as fractions (0-1), not percentages.
+# available from the MLB Stats API's per-9 rates), induced plate-discipline
+# rates (O-Swing%/chase, Z-Swing%, SwStr%/whiff), and FanGraphs' own pitch-
+# modeling grades (sp_stuff/sp_location, i.e. "Stuff+"/"Location+") -- none of
+# which are in Statcast or the MLB Stats API at all. Rate stats come back as
+# fractions (0-1), not percentages; Stuff+/Location+ are scaled to 100=average.
 FANGRAPHS_PITCHING_API = "https://www.fangraphs.com/api/leaders/major-league/data"
 
 
@@ -36,5 +38,8 @@ def fetch_plate_discipline(season: int) -> dict[int, dict]:
             "bb_rate": clean_nan(row.get("BB%")),
             "chase_rate": clean_nan(row.get("O-Swing%")),
             "whiff_rate": clean_nan(row.get("SwStr%")),
+            "z_swing_rate": clean_nan(row.get("Z-Swing%")),
+            "stuff_plus": clean_nan(row.get("sp_stuff")),
+            "location_plus": clean_nan(row.get("sp_location")),
         }
     return result

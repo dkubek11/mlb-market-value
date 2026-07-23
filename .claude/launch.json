@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d C:\\Users\\dylan\\Desktop\\mlb-market-value\\backend && C:\\Users\\dylan\\Desktop\\mlb-market-value\\venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --port 8000"
+      ],
+      "port": 8000
+    }
+  ]
+}

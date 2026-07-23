@@ -9,8 +9,12 @@ from app.models import PlayerType, PlayerValue, Position, TeamPayrollSummary
 
 # Minimum sample size to be included in a percentile ranking. Below this, a
 # single lucky/unlucky stretch swings the rate stats too much to compare fairly.
-MIN_BATTER_PA = 50
-MIN_PITCHER_IP = 15
+# Relievers get a lower IP floor than starters -- 50 IP is a full-season-ish
+# workload for a reliever, so a flat threshold would empty out the RP pool
+# well before the season ends.
+MIN_BATTER_PA = 150
+MIN_IP_SP = 50
+MIN_IP_RP = 25
 
 # Pre-arbitration (and minor-league) players are paid at or near the league
 # minimum by CBA rule, almost regardless of performance -- so comparing their
@@ -52,7 +56,11 @@ _PITCHER_QUERY = text(
     JOIN player_seasons ps
         ON ps.player_id = ps_stats.player_id AND ps.season = ps_stats.season AND ps.player_type = 'PITCHER'
     JOIN player_salaries sal ON sal.player_id = ps_stats.player_id AND sal.season = ps_stats.season
-    WHERE ps_stats.season = :season AND ps_stats.ip >= :min_ip AND ps_stats.fip IS NOT NULL
+    WHERE ps_stats.season = :season AND ps_stats.fip IS NOT NULL
+      AND (
+        (ps.position = 'SP' AND ps_stats.ip >= :min_ip_sp) OR
+        (ps.position = 'RP' AND ps_stats.ip >= :min_ip_rp)
+      )
     """
 )
 
@@ -135,7 +143,9 @@ def compute_player_value(db: Session, season: int) -> int:
     now = datetime.now(timezone.utc)
 
     batters = pd.read_sql(_BATTER_QUERY, engine, params={"season": season, "min_pa": MIN_BATTER_PA})
-    pitchers = pd.read_sql(_PITCHER_QUERY, engine, params={"season": season, "min_ip": MIN_PITCHER_IP})
+    pitchers = pd.read_sql(
+        _PITCHER_QUERY, engine, params={"season": season, "min_ip_sp": MIN_IP_SP, "min_ip_rp": MIN_IP_RP}
+    )
 
     batters = _compute_group(batters, "xwoba", higher_is_better=True)
     pitchers = _compute_group(pitchers, "fip", higher_is_better=False)
