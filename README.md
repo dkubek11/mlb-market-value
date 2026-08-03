@@ -82,4 +82,15 @@ py splice_dashboard.py       # bakes it into dashboard_final.html
 
 ## Scheduling
 
-A nightly refresh (ingest + compute + rebuild dashboard data) can be run via cron or a scheduler pointed at the two commands above plus `build_dashboard.py`. This isn't checked into the repo as a script yet — currently run as a local scheduled task on one machine, not automated in CI.
+`scripts/nightly_refresh.ps1` runs the full pipeline (ingest → compute value → rebuild dashboard data + HTML) and logs to `scripts/logs/`. It's registered as a **Windows Task Scheduler** job (`MLBMarketValueNightlyRefresh`, daily at 3am, catch-up-if-missed enabled) rather than anything app-dependent — it runs whether or not Claude Code, or any other app, happens to be open. To register it on a new machine:
+
+```powershell
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-ExecutionPolicy Bypass -File "<repo path>\scripts\nightly_refresh.ps1"'
+$trigger = New-ScheduledTaskTrigger -Daily -At 3:00AM
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd -ExecutionTimeLimit (New-TimeSpan -Hours 1)
+Register-ScheduledTask -TaskName "MLBMarketValueNightlyRefresh" -Action $action -Trigger $trigger -Settings $settings -Description "Nightly refresh of mlb-market-value DB + dashboard data" -Force
+```
+
+Note this only refreshes the database and the local `dashboard_final.html` — it does not (and can't) update a published Claude Artifact link, since that requires the Artifact tool from an interactive Claude session. Ask Claude to republish when you want a shared link to reflect fresh data.
+
+The task only runs while the machine is on; if it's asleep or off at 3am, `-StartWhenAvailable` runs it as soon as the machine is next active, rather than skipping straight to the next day.

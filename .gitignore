@@ -12,3 +12,6 @@ build/
 # regenerate from the live DB rather than committing a stale data snapshot.
 frontend/dashboard/dashboard_data.json
 frontend/dashboard/dashboard_final.html
+
+# Runtime logs from scripts/nightly_refresh.ps1
+scripts/logs/
