@@ -389,6 +389,22 @@
     font-family: "Courier Prime", monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--ink-dim); text-align: left; margin: 4px 0 8px;
   }
+
+  .history-table-wrap {
+    overflow-x: auto; border: 1px solid var(--border); border-radius: 7px; margin-bottom: 6px;
+  }
+  .history-table {
+    width: 100%; border-collapse: collapse; font-size: 11px;
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; white-space: nowrap;
+  }
+  .history-table th, .history-table td { padding: 5px 8px; text-align: left; }
+  .history-table th {
+    color: var(--ink-dim); font-weight: 700; text-transform: uppercase; font-size: 9px; letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+  }
+  .history-table td.num, .history-table th.num { text-align: right; }
+  .history-table tbody tr:not(:last-child) td { border-bottom: 1px solid var(--border); }
+  .history-note { font-size: 10px; color: var(--ink-dim); line-height: 1.5; text-align: left; margin-bottom: 4px; }
   .card-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: left; margin-bottom: 4px; }
   .card-stats-grid-3 { grid-template-columns: repeat(3, 1fr); }
   .card-stat { background: var(--surface-2); border-radius: 6px; padding: 8px 10px; }
@@ -650,6 +666,7 @@
   const DATA = __DATA_JSON__;
   const allPlayers = DATA.allPlayers;
   const positionStats = DATA.positionStats || {};
+  const positionStatsHistory = DATA.positionStatsHistory || {};
   const teams = DATA.teams;
   const rosters = DATA.rosters || {};
   const teamColors = DATA.teamColors || {};
@@ -845,6 +862,84 @@
     </div>`;
   }
 
+  // Standard normal CDF approximation (Zelen & Severo formula, error <
+  // 7.5e-8). Used to turn a historical season's weighted z-score composite
+  // into a percentile without loading every other qualifying player's
+  // historical stats client-side (which would roughly double the page's
+  // data payload just to rank against). The composite is a weighted sum of
+  // ~12 roughly-independent z-scored stats, so it's reasonably close to
+  // normally distributed within a position group -- not exact (stats do
+  // correlate with each other somewhat), but close enough for a "how good
+  // was this season" estimate, and unlike a precomputed number it still
+  // responds live to weight changes like everything else on the site.
+  function normalCdf(z) {
+    const t = 1 / (1 + 0.2316419 * Math.abs(z));
+    const d = 0.3989423 * Math.exp(-z * z / 2);
+    const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+    return z > 0 ? 1 - p : p;
+  }
+
+  // Grades one historical season the same way recomputeAll() grades the
+  // current one: z-score each stat against that season's position peers
+  // (positionStatsHistory), weight by the live (adjustable) weights, sum.
+  // The sum's own spread is estimated as sqrt(sum of squared weights used) --
+  // each input z-score has mean 0/std 1 by construction, and treating them
+  // as roughly independent makes the weighted sum's variance ~= sum(w^2) --
+  // then normalCdf() converts that standardized composite to a percentile.
+  function computeHistoricalGrade(entry, isBatter) {
+    const cfg = isBatter ? BATTER_STAT_CONFIG : PITCHER_STAT_CONFIG;
+    const w = isBatter ? battingWeights : pitchingWeights;
+    const seasonStats = (positionStatsHistory[entry.season] || {})[entry.position];
+    if (!seasonStats) return null;
+    let total = 0, weightSqSum = 0, any = false;
+    cfg.forEach(s => {
+      const val = entry.stats[s.key];
+      const ps = seasonStats[s.key];
+      if (val != null && ps && ps.std > 0) {
+        const rawZ = (val - ps.mean) / ps.std;
+        const z = s.higherBetter ? rawZ : -rawZ;
+        total += z * w[s.key];
+        weightSqSum += w[s.key] * w[s.key];
+        any = true;
+      }
+    });
+    if (!any || weightSqSum === 0) return null;
+    const pct = normalCdf(total / Math.sqrt(weightSqSum)) * 100;
+    return { rawScore: total, pct, grade: gradeFor(pct) };
+  }
+
+  const HISTORY_BATTER_COLS = BATTER_STATS.filter(s => ['ba', 'hr', 'xwoba'].includes(s.key));
+  const HISTORY_PITCHER_COLS = PITCHER_STATS.filter(s => ['era', 'xera', 'k_9'].includes(s.key));
+
+  function historySectionHtml(record) {
+    if (!record.history || !record.history.length) return '';
+    const cols = record.isBatter ? HISTORY_BATTER_COLS : HISTORY_PITCHER_COLS;
+    const headCells = cols.map(c => `<th class="num">${c.label}</th>`).join('');
+    const rows = record.history.map(entry => {
+      const grade = computeHistoricalGrade(entry, record.isBatter);
+      const statCells = cols.map(c => `<td class="num">${fmtStatValue(c.type, entry.stats[c.key])}</td>`).join('');
+      const pctCell = grade != null ? `${grade.pct.toFixed(1)}` : '—';
+      const gradeCell = grade != null ? grade.grade : '—';
+      return `<tr>
+        <td>${entry.season}</td>
+        <td><span class="pos-pill">${entry.position}</span></td>
+        ${statCells}
+        <td class="num">${pctCell}</td>
+        <td class="num">${gradeCell}</td>
+      </tr>`;
+    }).join('');
+    return `
+      <div class="card-section-title">5-Year History</div>
+      <div class="history-table-wrap">
+        <table class="history-table">
+          <thead><tr><th>Yr</th><th>Pos</th>${headCells}<th class="num">Perf%</th><th class="num">Grd</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="history-note">Performance vs. that season's position peers only (est. percentile) — no salary history exists for past seasons, so there's no historical Score.</div>
+    `;
+  }
+
   function openPlayerCard(record) {
     if (!record) return;
     const colors = teamColors[record.team] || ['#3a4a42', '#1a231e'];
@@ -888,6 +983,7 @@
     }
 
     const contractHtml = renderContractSection(record);
+    const historyHtml = historySectionHtml(record);
 
     document.getElementById('card-root').innerHTML = `
       <div class="baseball-card" style="--team-1:${colors[0]}; --team-2:${colors[1]};">
@@ -908,6 +1004,7 @@
           <div class="card-section-title">${record.isBatter ? 'Hitting' : 'Pitching'} vs. ${record.position} average</div>
           <div class="card-stats-grid">${statGrid(record, statSet)}</div>
           ${fieldingHtml}
+          ${historyHtml}
         </div>
       </div>
     `;

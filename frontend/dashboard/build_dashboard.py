@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, r"C:\Users\dylan\Desktop\mlb-market-value\backend")
 import pandas as pd
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
 from app.db import engine
 from app.pipeline.compute_value import _is_pre_arb
 from app.pipeline.projections import (
@@ -72,6 +72,42 @@ PITCHER_Q = text("""
         (ps.position = 'RP' AND ps_s.ip >= :min_ip_rp)
       )
 """)
+
+# Last 5 completed seasons' worth of qualifying stat lines, for the player
+# card's history table. No salary join -- RosterResource only exposes
+# *current* rosters, so there's no way to recover what a player actually
+# earned in a past season, which is why history only ever shows performance,
+# never a pay-based Score.
+HISTORY_SEASONS = list(range(season - 5, season))
+
+HISTORY_BATTER_Q = text("""
+    SELECT bs.player_id, t.abbreviation AS team, ps.position AS position, bs.season, bs.pa,
+           bs.ba, bs.obp, bs.slg, bs.xwoba, bs.xba, bs.xslg, bs.hr, bs.rbi, bs.sb,
+           bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
+           bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
+           fs.oaa, fs.frv, fs.drs
+    FROM batter_stats bs
+    JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
+    JOIN teams t ON t.team_id = ps.team_id
+    LEFT JOIN fielding_stats fs ON fs.player_id=bs.player_id AND fs.season=bs.season
+    WHERE bs.season IN :seasons AND bs.pa >= :min_pa AND bs.xwoba IS NOT NULL
+""").bindparams(bindparam("seasons", expanding=True))
+
+HISTORY_PITCHER_Q = text("""
+    SELECT ps_s.player_id, t.abbreviation AS team, ps.position AS position, ps_s.season, ps_s.ip,
+           ps_s.era, ps_s.whip, ps_s.fip, ps_s.xera, ps_s.k_9, ps_s.bb_9,
+           ps_s.hard_hit_rate_against, ps_s.barrel_rate_against, ps_s.xba_against,
+           ps_s.avg_exit_velo_against, ps_s.chase_rate, ps_s.whiff_rate, ps_s.k_rate, ps_s.bb_rate,
+           ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus
+    FROM pitcher_stats ps_s
+    JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
+    JOIN teams t ON t.team_id = ps.team_id
+    WHERE ps_s.season IN :seasons AND ps_s.fip IS NOT NULL
+      AND (
+        (ps.position = 'SP' AND ps_s.ip >= :min_ip_sp) OR
+        (ps.position = 'RP' AND ps_s.ip >= :min_ip_rp)
+      )
+""").bindparams(bindparam("seasons", expanding=True))
 
 # Every rostered player's playing time at their position, regardless of
 # whether they clear the scoring-qualification bar -- used only to pick who
@@ -139,7 +175,63 @@ def clean(v):
     return round(float(v), 5)
 
 
-def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys):
+print(f"[{season}] querying {len(HISTORY_SEASONS)}-season history ({HISTORY_SEASONS[0]}-{HISTORY_SEASONS[-1]})...")
+hist_batters = pd.read_sql(
+    HISTORY_BATTER_Q, engine, params={"seasons": HISTORY_SEASONS, "min_pa": MIN_BATTER_PA}
+)
+hist_pitchers = pd.read_sql(
+    HISTORY_PITCHER_Q, engine,
+    params={"seasons": HISTORY_SEASONS, "min_ip_sp": MIN_IP_SP, "min_ip_rp": MIN_IP_RP},
+)
+hist_batters["position"] = hist_batters["position"].map(lambda p: POS_MAP.get(p, p))
+
+# {season: {position: {stat: {mean, std}}}} -- same shape and method as the
+# current-season positionStats, just computed separately per historical
+# season so a player's history is scored against *that* season's peers.
+positionStatsHistory = {}
+for season_key, season_grp in hist_batters.groupby("season"):
+    positionStatsHistory[str(season_key)] = {}
+    for pos, grp in season_grp.groupby("position"):
+        positionStatsHistory[str(season_key)][pos] = {}
+        for stat in BATTER_STATS:
+            vals = grp[stat].dropna()
+            positionStatsHistory[str(season_key)][pos][stat] = (
+                {"mean": round(float(vals.mean()), 5), "std": round(float(vals.std()), 5)}
+                if len(vals) >= 2 else None
+            )
+for season_key, season_grp in hist_pitchers.groupby("season"):
+    positionStatsHistory.setdefault(str(season_key), {})
+    for pos, grp in season_grp.groupby("position"):
+        positionStatsHistory[str(season_key)][pos] = {}
+        for stat in PITCHER_STATS:
+            vals = grp[stat].dropna()
+            positionStatsHistory[str(season_key)][pos][stat] = (
+                {"mean": round(float(vals.mean()), 5), "std": round(float(vals.std()), 5)}
+                if len(vals) >= 2 else None
+            )
+
+
+def _history_rows(df, stat_keys):
+    """{(player_id, ) -> [{season, position, stats}, ...]}, most recent first."""
+    out = {}
+    for pid, grp in df.groupby("player_id"):
+        grp = grp.sort_values("season", ascending=False)
+        out[int(pid)] = [
+            {
+                "season": int(row.season),
+                "position": row.position,
+                "stats": {s: clean(getattr(row, s)) for s in stat_keys},
+            }
+            for row in grp.itertuples()
+        ]
+    return out
+
+
+batter_history_by_player = _history_rows(hist_batters, BATTER_STATS)
+pitcher_history_by_player = _history_rows(hist_pitchers, PITCHER_STATS)
+
+
+def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map):
     proj = proj_map.get(int(r.player_id), {})
     return {
         "id": int(r.player_id),
@@ -158,12 +250,17 @@ def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys):
         # regression + comparable-player projections; see projections.py).
         "projected": {s: clean(proj.get(s)) for s in proj_stat_keys},
         "nComps": proj.get("nComps", 0),
+        # Last 5 completed seasons the player qualified in (may be shorter or
+        # empty for young players) -- no salary, see HISTORY_BATTER_Q comment.
+        "history": history_map.get(int(r.player_id), []),
     }
 
 
 all_players = (
-    [to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys()) for r in batters.itertuples()]
-    + [to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys()) for r in pitchers.itertuples()]
+    [to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys(), batter_history_by_player)
+     for r in batters.itertuples()]
+    + [to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys(), pitcher_history_by_player)
+       for r in pitchers.itertuples()]
 )
 
 print(f"[{season}] building team payroll + rosters (all rostered players, not just qualifiers)...")
@@ -228,6 +325,7 @@ with open(HERE / "team_colors.json", encoding="utf-8") as f:
 out = {
     "allPlayers": all_players,
     "positionStats": positionStats,
+    "positionStatsHistory": positionStatsHistory,
     "teams": teams_out,
     "rosters": rosters,
     "teamColors": team_colors,
@@ -245,4 +343,6 @@ print(f"batters: {len(batters)}, pitchers: {len(pitchers)}, total: {len(all_play
 print(f"batters with projection: {with_proj_batters}/{len(batters)}, pitchers with projection: {with_proj_pitchers}/{len(pitchers)}")
 print(f"batters with comps: {with_comps_batters}/{len(batters)}, pitchers with comps: {with_comps_pitchers}/{len(pitchers)}")
 print(f"teams: {len(teams_out)}, contracts: {len(contracts)}")
+with_history = sum(1 for p in all_players if p["history"])
+print(f"players with >=1 year of history: {with_history}/{len(all_players)}")
 print("wrote", HERE / "dashboard_data.json")
