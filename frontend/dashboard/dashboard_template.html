@@ -969,16 +969,21 @@
       const recPayNote = record.recommendedSalary != null
         ? `<div class="card-value-note">Recommended pay: <strong>${fmtMoney(record.recommendedSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.paySurplus / 1e6)}M)</div>`
         : '';
+      const arbNote = (isArbEligible(record) && record.expectedArbSalary != null)
+        ? `<div class="card-value-note">Arbitration-eligible (est. ~${Math.round(arbServicePercent(record) * 100)}% of open-market value this year): expected <strong>${fmtMoney(record.expectedArbSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.arbSurplus / 1e6)}M)</div>`
+        : '';
       valueHtml = `<div class="card-value-box">
         <div class="card-stat-label">Score</div>
         ${valueBar(record.score, 100)}
         <div class="card-value-note">${record.compPct.toFixed(1)}th percentile performance, paid at the ${record.salPct.toFixed(1)}th percentile for ${record.position}</div>
         ${recPayNote}
+        ${arbNote}
       </div>`;
     } else if (record.projectedSalary != null) {
       valueHtml = `<div class="card-value-box">
         <div class="card-stat-label">Projected Arbitration Value</div>
         <div class="card-projected">${fmtMoney(record.projectedSalary)}</div>
+        <div class="card-value-note">Est. 40% of open-market value (${fmtMoney(record.recommendedSalary)}) — the typical share awarded in a player's first arbitration-eligible year.</div>
       </div>`;
     }
 
@@ -1377,6 +1382,26 @@
   const DEFAULT_PAY_WEIGHT = 1.0;
   let payWeight = DEFAULT_PAY_WEIGHT;
 
+  // Arbitration-eligible players (contract_type "Arbitration"/"Free Agent/Arb")
+  // and pre-arb players both have CBA-suppressed pay that doesn't reflect open-
+  // market value -- real arbitration/extension numbers are calculated as a
+  // percentage of open-market value, not the market value itself (see
+  // arbServicePercent below). RosterResource's contract_type doesn't split out
+  // Arb1/Arb2/Arb3 or Super Two, so which year a player is in is approximated
+  // from years since MLB debut (serviceYears) -- not the same as true accrued
+  // service time (call-up timing, options days, etc. aren't captured).
+  function isArbEligible(p) {
+    if (p.isPreArb) return false;
+    const ct = p.contractType || '';
+    return /^Arbitration/.test(ct) || ct === 'Free Agent/Arb';
+  }
+  function arbServicePercent(p) {
+    const svcYears = p.serviceYears != null ? p.serviceYears : 3;
+    if (svcYears <= 3) return 0.40;
+    if (svcYears === 4) return 0.60;
+    return 0.80;
+  }
+
   function fmtStatValueExt(type, v) {
     if (v == null) return '—';
     if (type === 'fracPct1') return (v * 100).toFixed(1) + '%';
@@ -1441,11 +1466,11 @@
   // PROXIMITY_SCALE and widens (by PROXIMITY_SCALE_GROWTH each step) until
   // the effective sample size clears MIN_EFFECTIVE_COMPS or the scale hits
   // PROXIMITY_SCALE_MAX, whichever comes first.
-  function adaptiveCompMedian(pool, anchorPct, valueKey) {
+  function adaptiveCompMedian(pool, anchorPct, valueKey, pctKey = 'compPct') {
     let scale = PROXIMITY_SCALE;
     let weights;
     while (true) {
-      weights = pool.map(m => Math.exp(-Math.abs(m.compPct - anchorPct) / scale));
+      weights = pool.map(m => Math.exp(-Math.abs(m[pctKey] - anchorPct) / scale));
       if (effectiveSampleSize(weights) >= MIN_EFFECTIVE_COMPS || scale >= PROXIMITY_SCALE_MAX) break;
       scale *= PROXIMITY_SCALE_GROWTH;
     }
@@ -1489,6 +1514,13 @@
       });
 
       const marketGroup = group.filter(p => !p.isPreArb);
+      // Comps for recommendedSalary must be drawn only from *actually*
+      // market-priced players (Free Agent / Extension) -- arb-eligible
+      // players' pay is CBA-suppressed too (that's the whole reason the
+      // 40/60/80% rule below exists), so letting their AAVs feed the comp
+      // pool would circularly drag the computed "open market value" down
+      // for everyone, including other arb-eligible players.
+      const trueMarketGroup = marketGroup.filter(p => !isArbEligible(p));
       const bySalary = [...marketGroup].sort((a, b) => a.aav - b.aav);
       bySalary.forEach((p, i) => {
         p.salPct = bySalary.length > 1 ? (i / (bySalary.length - 1)) * 100 : 100;
@@ -1525,24 +1557,38 @@
       // alike), not just rookies, so it doubles as a plain-dollar complement
       // to Score for market players too ("performs like $30M, paid $8M").
       group.forEach(p => {
-        if (marketGroup.length === 0) { p.recommendedSalary = null; p.paySurplus = null; return; }
+        if (trueMarketGroup.length === 0) { p.recommendedSalary = null; p.paySurplus = null; return; }
         // Blend in the multi-year projection (when available) so the number
         // isn't purely a bet on one season's small sample.
         const anchorPct = p.projectedPct != null
           ? (1 - PROJECTION_BLEND) * p.compPct + PROJECTION_BLEND * p.projectedPct
           : p.compPct;
-        const compPool = marketGroup.filter(m => m !== p);
+        const compPool = trueMarketGroup.filter(m => m !== p);
         if (compPool.length === 0) { p.recommendedSalary = null; p.paySurplus = null; return; }
         const median = adaptiveCompMedian(compPool, anchorPct, 'aav');
         p.recommendedSalary = median;
         p.paySurplus = median - p.aav;
       });
 
-      // Pre-arb players keep the old field names too (card/Rookies-tab code
-      // reads projectedSalary/surplus) -- same numbers, just aliased.
+      // Pre-arb and arb-eligible players' pay is set by formula off open-
+      // market value (recommendedSalary above), not the market itself: real
+      // arbitration/extension figures land at roughly 40% of open-market
+      // value in a player's first arb-eligible year, 60% in the second, 80%
+      // in the third (see arbServicePercent). Pre-arb players are projected
+      // to their eventual Arb-1 number; currently arb-eligible players get
+      // an expected-value figure to compare against what they're actually
+      // being paid -- comparing them to the full open-market recommendedSalary
+      // instead would make every arb-eligible player look like a huge
+      // bargain, which isn't a real signal, just how the CBA suppresses pay
+      // before free agency.
       group.filter(p => p.isPreArb).forEach(p => {
-        p.projectedSalary = p.recommendedSalary;
-        p.surplus = p.paySurplus;
+        p.projectedSalary = p.recommendedSalary != null ? p.recommendedSalary * 0.40 : null;
+        p.surplus = p.projectedSalary != null ? p.projectedSalary - p.aav : null;
+      });
+      group.filter(isArbEligible).forEach(p => {
+        if (p.recommendedSalary == null) { p.expectedArbSalary = null; p.arbSurplus = null; return; }
+        p.expectedArbSalary = p.recommendedSalary * arbServicePercent(p);
+        p.arbSurplus = p.expectedArbSalary - p.aav;
       });
     });
 

@@ -32,19 +32,22 @@ POS_MAP = {"FIRST_BASE": "1B", "SECOND_BASE": "2B", "THIRD_BASE": "3B"}
 
 BATTER_STATS = ["ba", "obp", "slg", "xwoba", "xba", "xslg", "hr", "rbi", "sb",
                  "barrel_rate", "hard_hit_rate", "sprint_speed",
-                 "chase_rate", "whiff_rate", "k_rate", "bb_rate", "oaa", "frv", "drs"]
+                 "chase_rate", "whiff_rate", "k_rate", "bb_rate", "oaa", "frv", "drs",
+                 "hits", "games"]
 PITCHER_STATS = ["era", "whip", "fip", "xera", "k_9", "bb_9",
                   "hard_hit_rate_against", "barrel_rate_against", "xba_against",
                   "avg_exit_velo_against", "chase_rate", "whiff_rate", "k_rate", "bb_rate",
-                  "z_swing_rate", "extension", "stuff_plus", "location_plus"]
+                  "z_swing_rate", "extension", "stuff_plus", "location_plus",
+                  "wins", "saves", "games_started", "ip"]
 
 BATTER_Q = text("""
     SELECT bs.player_id, p.full_name, t.abbreviation AS team, ps.position AS position,
-           sal.salary, sal.aav, sal.contract_type, bs.pa,
+           sal.salary, sal.aav, sal.contract_type, bs.pa, p.debut_date,
            bs.ba, bs.obp, bs.slg, bs.xwoba, bs.xba, bs.xslg, bs.hr, bs.rbi, bs.sb,
            bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
            bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
-           fs.oaa, fs.frv, fs.drs
+           fs.oaa, fs.frv, fs.drs,
+           bs.hits, bs.games
     FROM batter_stats bs
     JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
     JOIN players p ON p.player_id = bs.player_id
@@ -56,11 +59,12 @@ BATTER_Q = text("""
 
 PITCHER_Q = text("""
     SELECT ps_s.player_id, p.full_name, t.abbreviation AS team, ps.position AS position,
-           sal.salary, sal.aav, sal.contract_type, ps_s.ip,
+           sal.salary, sal.aav, sal.contract_type, ps_s.ip, p.debut_date,
            ps_s.era, ps_s.whip, ps_s.fip, ps_s.xera, ps_s.k_9, ps_s.bb_9,
            ps_s.hard_hit_rate_against, ps_s.barrel_rate_against, ps_s.xba_against,
            ps_s.avg_exit_velo_against, ps_s.chase_rate, ps_s.whiff_rate, ps_s.k_rate, ps_s.bb_rate,
-           ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus
+           ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus,
+           ps_s.wins, ps_s.saves, ps_s.games_started
     FROM pitcher_stats ps_s
     JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
     JOIN players p ON p.player_id = ps_s.player_id
@@ -85,7 +89,8 @@ HISTORY_BATTER_Q = text("""
            bs.ba, bs.obp, bs.slg, bs.xwoba, bs.xba, bs.xslg, bs.hr, bs.rbi, bs.sb,
            bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
            bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
-           fs.oaa, fs.frv, fs.drs
+           fs.oaa, fs.frv, fs.drs,
+           bs.hits, bs.games
     FROM batter_stats bs
     JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
     JOIN teams t ON t.team_id = ps.team_id
@@ -98,7 +103,8 @@ HISTORY_PITCHER_Q = text("""
            ps_s.era, ps_s.whip, ps_s.fip, ps_s.xera, ps_s.k_9, ps_s.bb_9,
            ps_s.hard_hit_rate_against, ps_s.barrel_rate_against, ps_s.xba_against,
            ps_s.avg_exit_velo_against, ps_s.chase_rate, ps_s.whiff_rate, ps_s.k_rate, ps_s.bb_rate,
-           ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus
+           ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus,
+           ps_s.wins, ps_s.saves, ps_s.games_started
     FROM pitcher_stats ps_s
     JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
     JOIN teams t ON t.team_id = ps.team_id
@@ -233,6 +239,14 @@ pitcher_history_by_player = _history_rows(hist_pitchers, PITCHER_STATS)
 
 def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map):
     proj = proj_map.get(int(r.player_id), {})
+    debut_date = getattr(r, "debut_date", None)
+    # Approximate service-time year from years since MLB debut -- RosterResource's
+    # contract_type only exposes a flat "Arbitration" label (no Arb1/2/3 or Super
+    # Two split), and true accrued service time (active-roster days) isn't
+    # available from any source this pipeline scrapes. This is a proxy, not
+    # exact service time: it won't account for time on optional assignment,
+    # injury rehab stints, etc.
+    service_years = season - debut_date.year if debut_date is not None and pd.notna(debut_date) else None
     return {
         "id": int(r.player_id),
         "name": r.full_name,
@@ -240,6 +254,7 @@ def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map):
         "position": r.position,
         "isBatter": is_batter,
         "isPreArb": bool(r.is_pre_arb),
+        "serviceYears": service_years,
         "salary": round(float(r.salary)),
         "aav": round(float(r.aav)),
         "contractType": r.contract_type,
