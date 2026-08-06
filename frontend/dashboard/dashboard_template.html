@@ -1543,6 +1543,15 @@
   // everyone inside a window equally and everyone outside it not at all.
   function weightedMedian(items, valueKey, weightKey) {
     if (!items.length) return null;
+    // NaN weights/values (e.g. from an undefined percentile feeding the
+    // exp() distance calc upstream) make every cumulative-weight comparison
+    // below false, which used to fall through to "return the max value in
+    // the pool" silently -- the same wrong answer for every caller with a
+    // broken input, which is exactly the kind of bug that's easy to miss.
+    // Fail loud instead.
+    if (Number.isNaN(totalOf(items, weightKey))) {
+      throw new Error('weightedMedian: NaN weight in input -- check upstream percentile fields');
+    }
     const sorted = [...items].sort((a, b) => a[valueKey] - b[valueKey]);
     const totalWeight = sorted.reduce((s, it) => s + it[weightKey], 0);
     let cumulative = 0;
@@ -1551,6 +1560,9 @@
       if (cumulative >= totalWeight / 2) return it[valueKey];
     }
     return sorted[sorted.length - 1][valueKey];
+  }
+  function totalOf(items, key) {
+    return items.reduce((s, it) => s + it[key], 0);
   }
 
   function median(arr) {
@@ -1702,10 +1714,6 @@
         p.arbPlatformPct = null;
         p.arbTrackPct = null;
       }
-      // What arb-comp matching (both the anchor and the pool-matching key)
-      // should actually use: the platform-season percentile when one exists
-      // for an arb-eligible player, current-season otherwise.
-      p.arbMatchPct = p.arbPlatformPct != null ? p.arbPlatformPct : p.arbCompPct;
     });
 
     const byPos = {};
@@ -1721,6 +1729,18 @@
       const byArbRaw = [...group].sort((a, b) => a.rawArbScore - b.rawArbScore);
       byArbRaw.forEach((p, i) => {
         p.arbCompPct = byArbRaw.length > 1 ? (i / (byArbRaw.length - 1)) * 100 : 100;
+        // What arb-comp matching (both the anchor and the pool-matching key)
+        // should actually use: the platform-season percentile when one
+        // exists for an arb-eligible player, current-season otherwise. Must
+        // run after arbCompPct (just above) is actually set -- this used to
+        // live in the earlier per-player loop, before arbCompPct existed
+        // yet, silently leaving every pre-arb player's arbMatchPct
+        // undefined. That NaN'd every weight in adaptiveCompMedian, which
+        // made weightedMedian's cumulative-weight comparison always false
+        // and fall through to returning the single richest comp in the
+        // whole pool -- identically, for every affected player, regardless
+        // of their own anchor.
+        p.arbMatchPct = p.arbPlatformPct != null ? p.arbPlatformPct : p.arbCompPct;
       });
     });
 

@@ -47,13 +47,45 @@ _HISTORICAL_URL_OVERRIDES = {
 }
 
 
+_YEAR_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+}
+# Players who avoid arbitration by signing a multi-year extension get an
+# entry like "six-year, $73MM extension" -- that $73MM is the deal TOTAL,
+# not a single-season salary (Sean Murphy's real 2023 AAV was ~$12.2MM).
+# Without this, a bare dollar-figure regex reads the total as if it were
+# one year's pay, badly inflating the comp pool. MLBTR spells out the year
+# count in words ("six-year") rather than digits, so this matches both.
+_YEARS_DOLLAR_RE = re.compile(
+    r"(\d+|one|two|three|four|five|six|seven|eight|nine|ten)[\s-]*year,?\s*\$([\d,.]+)\s*(MM|M|K)\b",
+    re.IGNORECASE,
+)
+# Backstop for whatever the years-pattern above doesn't catch (unusual
+# phrasing, a dollar figure referring to something else in the entry
+# entirely): the real all-time arbitration record is Skubal's $32MM
+# (2026) -- anything parsed above this is almost certainly a mis-read
+# multi-year total or an unrelated number, not a real single-season salary.
+MAX_PLAUSIBLE_SINGLE_SEASON_SALARY = 40_000_000
+
+
 def _parse_dollar(text: str) -> float | None:
+    years_match = _YEARS_DOLLAR_RE.search(text)
+    if years_match:
+        years = _YEAR_WORDS.get(years_match.group(1).lower()) or int(years_match.group(1))
+        amount = float(years_match.group(2).replace(",", ""))
+        unit = years_match.group(3)
+        total = amount * (1_000_000 if unit.upper() == "MM" or unit == "M" else 1_000)
+        return total / years if years > 0 else None
     match = _DOLLAR_RE.search(text)
     if not match:
         return None
     amount = float(match.group(1).replace(",", ""))
     unit = match.group(2)
-    return amount * (1_000_000 if unit in ("MM", "M") else 1_000)
+    salary = amount * (1_000_000 if unit in ("MM", "M") else 1_000)
+    if salary > MAX_PLAUSIBLE_SINGLE_SEASON_SALARY:
+        return None
+    return salary
 
 
 def fetch_historical_outcomes(season: int) -> list[dict]:
