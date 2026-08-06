@@ -33,21 +33,21 @@ POS_MAP = {"FIRST_BASE": "1B", "SECOND_BASE": "2B", "THIRD_BASE": "3B"}
 BATTER_STATS = ["ba", "obp", "slg", "xwoba", "xba", "xslg", "hr", "rbi", "sb",
                  "barrel_rate", "hard_hit_rate", "sprint_speed",
                  "chase_rate", "whiff_rate", "k_rate", "bb_rate", "oaa", "frv", "drs",
-                 "hits", "games"]
+                 "hits", "games", "war"]
 PITCHER_STATS = ["era", "whip", "fip", "xera", "k_9", "bb_9",
                   "hard_hit_rate_against", "barrel_rate_against", "xba_against",
                   "avg_exit_velo_against", "chase_rate", "whiff_rate", "k_rate", "bb_rate",
                   "z_swing_rate", "extension", "stuff_plus", "location_plus",
-                  "wins", "saves", "games_started", "ip"]
+                  "wins", "saves", "games_started", "ip", "war"]
 
 BATTER_Q = text("""
     SELECT bs.player_id, p.full_name, t.abbreviation AS team, ps.position AS position,
-           sal.salary, sal.aav, sal.contract_type, bs.pa, p.debut_date,
+           sal.salary, sal.aav, sal.contract_type, sal.service_time, bs.pa, p.debut_date,
            bs.ba, bs.obp, bs.slg, bs.xwoba, bs.xba, bs.xslg, bs.hr, bs.rbi, bs.sb,
            bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
            bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
            fs.oaa, fs.frv, fs.drs,
-           bs.hits, bs.games
+           bs.hits, bs.games, bs.war
     FROM batter_stats bs
     JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
     JOIN players p ON p.player_id = bs.player_id
@@ -59,12 +59,12 @@ BATTER_Q = text("""
 
 PITCHER_Q = text("""
     SELECT ps_s.player_id, p.full_name, t.abbreviation AS team, ps.position AS position,
-           sal.salary, sal.aav, sal.contract_type, ps_s.ip, p.debut_date,
+           sal.salary, sal.aav, sal.contract_type, sal.service_time, ps_s.ip, p.debut_date,
            ps_s.era, ps_s.whip, ps_s.fip, ps_s.xera, ps_s.k_9, ps_s.bb_9,
            ps_s.hard_hit_rate_against, ps_s.barrel_rate_against, ps_s.xba_against,
            ps_s.avg_exit_velo_against, ps_s.chase_rate, ps_s.whiff_rate, ps_s.k_rate, ps_s.bb_rate,
            ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus,
-           ps_s.wins, ps_s.saves, ps_s.games_started
+           ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.war
     FROM pitcher_stats ps_s
     JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
     JOIN players p ON p.player_id = ps_s.player_id
@@ -90,7 +90,7 @@ HISTORY_BATTER_Q = text("""
            bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
            bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
            fs.oaa, fs.frv, fs.drs,
-           bs.hits, bs.games
+           bs.hits, bs.games, bs.war
     FROM batter_stats bs
     JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
     JOIN teams t ON t.team_id = ps.team_id
@@ -104,7 +104,7 @@ HISTORY_PITCHER_Q = text("""
            ps_s.hard_hit_rate_against, ps_s.barrel_rate_against, ps_s.xba_against,
            ps_s.avg_exit_velo_against, ps_s.chase_rate, ps_s.whiff_rate, ps_s.k_rate, ps_s.bb_rate,
            ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus,
-           ps_s.wins, ps_s.saves, ps_s.games_started
+           ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.war
     FROM pitcher_stats ps_s
     JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
     JOIN teams t ON t.team_id = ps.team_id
@@ -133,6 +133,31 @@ ROSTER_PITCHER_Q = text("""
     JOIN players p ON p.player_id = ps_s.player_id
     JOIN teams t ON t.team_id = ps.team_id
     WHERE ps_s.season=:season
+""")
+
+ARB_HISTORY_STAT_KEYS = {"batter": ["ba", "obp", "slg", "hr", "rbi", "sb", "hits", "games"],
+                          "pitcher": ["era", "whip", "k_9", "wins", "saves", "ip", "games_started"]}
+
+# Real historical arbitration settlements (see backfill_arb_outcomes.py) --
+# service_time is MLB's own accrued-days figure and actual_salary is what
+# the player actually got paid, joined back to their platform-season stat
+# line so the dashboard can comp arb-eligible/pre-arb players against real
+# multi-year peer outcomes instead of just the current season's ~150-player
+# pool. No salary join needed here (unlike BATTER_Q/PITCHER_Q) since
+# actual_salary already comes from arb_outcomes itself.
+ARB_HISTORY_BATTER_Q = text(f"""
+    SELECT ao.player_id, ao.platform_season AS season, ao.service_time, ao.actual_salary,
+           ps.position AS position, {", ".join("bs." + k for k in ARB_HISTORY_STAT_KEYS["batter"])}
+    FROM arb_outcomes ao
+    JOIN batter_stats bs ON bs.player_id = ao.player_id AND bs.season = ao.platform_season
+    JOIN player_seasons ps ON ps.player_id=ao.player_id AND ps.season=ao.platform_season AND ps.player_type='BATTER'
+""")
+ARB_HISTORY_PITCHER_Q = text(f"""
+    SELECT ao.player_id, ao.platform_season AS season, ao.service_time, ao.actual_salary,
+           ps.position AS position, {", ".join("ps_s." + k for k in ARB_HISTORY_STAT_KEYS["pitcher"])}
+    FROM arb_outcomes ao
+    JOIN pitcher_stats ps_s ON ps_s.player_id = ao.player_id AND ps_s.season = ao.platform_season
+    JOIN player_seasons ps ON ps.player_id=ao.player_id AND ps.season=ao.platform_season AND ps.player_type='PITCHER'
 """)
 
 TEAMS_Q = text("SELECT team_id, abbreviation, name, league, division FROM teams")
@@ -240,13 +265,22 @@ pitcher_history_by_player = _history_rows(hist_pitchers, PITCHER_STATS)
 def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map):
     proj = proj_map.get(int(r.player_id), {})
     debut_date = getattr(r, "debut_date", None)
-    # Approximate service-time year from years since MLB debut -- RosterResource's
-    # contract_type only exposes a flat "Arbitration" label (no Arb1/2/3 or Super
-    # Two split), and true accrued service time (active-roster days) isn't
-    # available from any source this pipeline scrapes. This is a proxy, not
-    # exact service time: it won't account for time on optional assignment,
-    # injury rehab stints, etc.
-    service_years = season - debut_date.year if debut_date is not None and pd.notna(debut_date) else None
+    # Real accrued MLB service time (years.days), scraped from MLB Trade
+    # Rumors' arbitration tracker -- the actual figure the CBA's Arb1/2/3 and
+    # Super Two rules are based on. Only present for players who appear in
+    # that season's tracker (i.e. currently arbitration-eligible). For
+    # everyone else (pre-arb rookies not yet tracker-eligible, or a rare
+    # MLBTR name-match miss), fall back to an approximate proxy: years since
+    # MLB debut. That proxy won't account for time on optional assignment,
+    # injury rehab stints, etc., so it can misclassify -- serviceYearsExact
+    # tells the frontend which case it's looking at.
+    real_service = getattr(r, "service_time", None)
+    if real_service is not None and pd.notna(real_service):
+        service_years = float(real_service)
+        service_years_exact = True
+    else:
+        service_years = season - debut_date.year if debut_date is not None and pd.notna(debut_date) else None
+        service_years_exact = False
     return {
         "id": int(r.player_id),
         "name": r.full_name,
@@ -255,6 +289,7 @@ def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map):
         "isBatter": is_batter,
         "isPreArb": bool(r.is_pre_arb),
         "serviceYears": service_years,
+        "serviceYearsExact": service_years_exact,
         "salary": round(float(r.salary)),
         "aav": round(float(r.aav)),
         "contractType": r.contract_type,
@@ -334,6 +369,34 @@ for slug in TEAM_SLUG_TO_ABBREVIATION:
         if existing is None or len(entry["years"]) > len(existing["years"]):
             contracts[pid] = entry
 
+print(f"[{season}] querying real historical arbitration outcomes...")
+arb_hist_batters = pd.read_sql(ARB_HISTORY_BATTER_Q, engine)
+arb_hist_pitchers = pd.read_sql(ARB_HISTORY_PITCHER_Q, engine)
+arb_hist_batters["position"] = arb_hist_batters["position"].map(lambda p: POS_MAP.get(p, p))
+
+
+def _arb_outcome_records(df, is_batter, stat_keys):
+    return [
+        {
+            "playerId": int(r.player_id),
+            "season": int(r.season),
+            "position": r.position,
+            "isBatter": is_batter,
+            "serviceTime": clean(r.service_time),
+            "actualSalary": clean(r.actual_salary),
+            "stats": {s: clean(getattr(r, s)) for s in stat_keys},
+        }
+        for r in df.itertuples()
+    ]
+
+
+historical_arb_outcomes = (
+    _arb_outcome_records(arb_hist_batters, True, ARB_HISTORY_STAT_KEYS["batter"])
+    + _arb_outcome_records(arb_hist_pitchers, False, ARB_HISTORY_STAT_KEYS["pitcher"])
+)
+print(f"[{season}] historical arb outcomes: {len(historical_arb_outcomes)} "
+      f"({len(arb_hist_batters)} batters, {len(arb_hist_pitchers)} pitchers)")
+
 with open(HERE / "team_colors.json", encoding="utf-8") as f:
     team_colors = json.load(f)
 
@@ -341,6 +404,7 @@ out = {
     "allPlayers": all_players,
     "positionStats": positionStats,
     "positionStatsHistory": positionStatsHistory,
+    "historicalArbOutcomes": historical_arb_outcomes,
     "teams": teams_out,
     "rosters": rosters,
     "teamColors": team_colors,

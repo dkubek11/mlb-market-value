@@ -667,6 +667,7 @@
   const allPlayers = DATA.allPlayers;
   const positionStats = DATA.positionStats || {};
   const positionStatsHistory = DATA.positionStatsHistory || {};
+  const historicalArbOutcomes = DATA.historicalArbOutcomes || [];
   const teams = DATA.teams;
   const rosters = DATA.rosters || {};
   const teamColors = DATA.teamColors || {};
@@ -712,6 +713,7 @@
 
   // --- Baseball card ---
   const BATTER_STATS = [
+    { key: 'war', label: 'fWAR', type: 'velo1', higherBetter: true },
     { key: 'ba', label: 'AVG', type: 'avg3', higherBetter: true },
     { key: 'obp', label: 'OBP', type: 'avg3', higherBetter: true },
     { key: 'slg', label: 'SLG', type: 'avg3', higherBetter: true },
@@ -724,6 +726,7 @@
     { key: 'sprint_speed', label: 'Sprint Spd', type: 'velo1', higherBetter: true },
   ];
   const PITCHER_STATS = [
+    { key: 'war', label: 'fWAR', type: 'velo1', higherBetter: true },
     { key: 'era', label: 'ERA', type: 'rate2', higherBetter: false },
     { key: 'whip', label: 'WHIP', type: 'rate2', higherBetter: false },
     { key: 'fip', label: 'FIP', type: 'rate2', higherBetter: false },
@@ -908,6 +911,31 @@
     return { rawScore: total, pct, grade: gradeFor(pct) };
   }
 
+  // Same as computeHistoricalGrade, but on the traditional-stat composite
+  // (BATTER_ARB_CONFIG/PITCHER_ARB_CONFIG, defined further below) -- used to
+  // build arb-eligible/pre-arb players' multi-year track record out of their
+  // own past qualifying seasons, the same real-arbitration-relevant stats as
+  // their current-season arbCompPct, not the advanced-metric ones.
+  function computeHistoricalArbGrade(entry, isBatter) {
+    const cfg = isBatter ? BATTER_ARB_CONFIG : PITCHER_ARB_CONFIG;
+    const seasonStats = (positionStatsHistory[entry.season] || {})[entry.position];
+    if (!seasonStats) return null;
+    let total = 0, weightSqSum = 0, any = false;
+    cfg.forEach(s => {
+      const val = entry.stats[s.key];
+      const ps = seasonStats[s.key];
+      if (val != null && ps && ps.std > 0) {
+        const rawZ = (val - ps.mean) / ps.std;
+        const z = s.higherBetter ? rawZ : -rawZ;
+        total += z * s.defaultWeight;
+        weightSqSum += s.defaultWeight * s.defaultWeight;
+        any = true;
+      }
+    });
+    if (!any || weightSqSum === 0) return null;
+    return normalCdf(total / Math.sqrt(weightSqSum)) * 100;
+  }
+
   const HISTORY_BATTER_COLS = BATTER_STATS.filter(s => ['ba', 'hr', 'xwoba'].includes(s.key));
   const HISTORY_PITCHER_COLS = PITCHER_STATS.filter(s => ['era', 'xera', 'k_9'].includes(s.key));
 
@@ -970,7 +998,7 @@
         ? `<div class="card-value-note">Recommended pay: <strong>${fmtMoney(record.recommendedSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.paySurplus / 1e6)}M)</div>`
         : '';
       const arbNote = (isArbEligible(record) && record.expectedArbSalary != null)
-        ? `<div class="card-value-note">Arbitration-eligible (est. ~${Math.round(arbServicePercent(record) * 100)}% of open-market value this year): expected <strong>${fmtMoney(record.expectedArbSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.arbSurplus / 1e6)}M)</div>`
+        ? `<div class="card-value-note">Arbitration-eligible — ${arbYearLabel(record)}. Comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-adjusted to ~${Math.round(arbServicePercent(record) * 100)}%: expected <strong>${fmtMoney(record.expectedArbSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.arbSurplus / 1e6)}M)</div>`
         : '';
       valueHtml = `<div class="card-value-box">
         <div class="card-stat-label">Score</div>
@@ -983,7 +1011,7 @@
       valueHtml = `<div class="card-value-box">
         <div class="card-stat-label">Projected Arbitration Value</div>
         <div class="card-projected">${fmtMoney(record.projectedSalary)}</div>
-        <div class="card-value-note">Est. 40% of open-market value (${fmtMoney(record.recommendedSalary)}) — the typical share awarded in a player's first arbitration-eligible year.</div>
+        <div class="card-value-note">Comped against real Arb-1-tier peers on traditional stats (AVG/HR/RBI/wins/saves/etc.) — the stats an arbitration panel actually looks at, not advanced metrics. Assumes the standard track (~40%); Super Two eligibility (a 4th, earlier arb year) can't be predicted before a player actually reaches the tracker.</div>
       </div>`;
     }
 
@@ -1382,6 +1410,35 @@
   const DEFAULT_PAY_WEIGHT = 1.0;
   let payWeight = DEFAULT_PAY_WEIGHT;
 
+  // Separate composite used ONLY to match pre-arb/arb-eligible players
+  // against each other in directArbCompSalary -- real arbitration hearings
+  // are decided on traditional counting/rate stats and playing time, not
+  // Statcast-era advanced metrics (BATTER_STAT_CONFIG/PITCHER_STAT_CONFIG
+  // above, which stays the basis for Score/grade/open-market value
+  // everywhere else on the site, unchanged). Confirmed by two independent
+  // signals: real-world research on how arbitration panels actually build
+  // comp cases, and this site's own spot-checks finding elite closers
+  // undervalued specifically because saves aren't part of compPct at all.
+  const BATTER_ARB_CONFIG = [
+    { key: 'ba', label: 'AVG', higherBetter: true, defaultWeight: 1.5, type: 'avg3' },
+    { key: 'obp', label: 'OBP', higherBetter: true, defaultWeight: 1.0, type: 'avg3' },
+    { key: 'slg', label: 'SLG', higherBetter: true, defaultWeight: 1.0, type: 'avg3' },
+    { key: 'hr', label: 'HR', higherBetter: true, defaultWeight: 1.5, type: 'int' },
+    { key: 'rbi', label: 'RBI', higherBetter: true, defaultWeight: 1.5, type: 'int' },
+    { key: 'sb', label: 'SB', higherBetter: true, defaultWeight: 0.5, type: 'int' },
+    { key: 'hits', label: 'Hits', higherBetter: true, defaultWeight: 1.0, type: 'int' },
+    { key: 'games', label: 'Games', higherBetter: true, defaultWeight: 0.5, type: 'int' },
+  ];
+  const PITCHER_ARB_CONFIG = [
+    { key: 'era', label: 'ERA', higherBetter: false, defaultWeight: 2.0, type: 'rate2' },
+    { key: 'whip', label: 'WHIP', higherBetter: false, defaultWeight: 1.0, type: 'rate2' },
+    { key: 'k_9', label: 'K/9', higherBetter: true, defaultWeight: 1.0, type: 'rate2' },
+    { key: 'wins', label: 'Wins', higherBetter: true, defaultWeight: 1.5, type: 'int' },
+    { key: 'saves', label: 'Saves', higherBetter: true, defaultWeight: 1.5, type: 'int' },
+    { key: 'ip', label: 'IP', higherBetter: true, defaultWeight: 1.0, type: 'rate2' },
+    { key: 'games_started', label: 'GS', higherBetter: true, defaultWeight: 0.3, type: 'int' },
+  ];
+
   // Arbitration-eligible players (contract_type "Arbitration"/"Free Agent/Arb")
   // and pre-arb players both have CBA-suppressed pay that doesn't reflect open-
   // market value -- real arbitration/extension numbers are calculated as a
@@ -1395,11 +1452,35 @@
     const ct = p.contractType || '';
     return /^Arbitration/.test(ct) || ct === 'Free Agent/Arb';
   }
+  // Real CBA rule: free agency hits at 6.000 years of service. Players who
+  // reach 3.000 first get 3 arbitration-eligible years (40/60/80% of open-
+  // market value). Players who qualify for "Super Two" status (top ~22% of
+  // the 2.000-3.000-YOS group by a cutoff set fresh each year, e.g. 2.140 for
+  // 2026) get a 4th, earlier year instead (25/40/60/80%). Any player showing
+  // real service time under 3.000 here is arbitration-eligible *because*
+  // they cleared that year's cutoff -- Super Two status doesn't need to be
+  // looked up separately, it falls straight out of the service-time number.
+  function tierFromServiceYears(svc) {
+    if (svc == null) svc = 3;
+    if (svc < 3.0) {
+      const yearNum = Math.max(1, Math.min(4, Math.floor(svc) - 1));
+      return [0.25, 0.40, 0.60, 0.80][yearNum - 1];
+    }
+    const yearNum = Math.max(1, Math.min(3, Math.floor(svc) - 2));
+    return [0.40, 0.60, 0.80][yearNum - 1];
+  }
   function arbServicePercent(p) {
-    const svcYears = p.serviceYears != null ? p.serviceYears : 3;
-    if (svcYears <= 3) return 0.40;
-    if (svcYears === 4) return 0.60;
-    return 0.80;
+    return tierFromServiceYears(p.serviceYears);
+  }
+  function arbYearLabel(p) {
+    const svc = p.serviceYears != null ? p.serviceYears : 3;
+    const isSuperTwo = svc < 3.0;
+    const yearNum = isSuperTwo
+      ? Math.max(1, Math.min(4, Math.floor(svc) - 1))
+      : Math.max(1, Math.min(3, Math.floor(svc) - 2));
+    const totalYears = isSuperTwo ? 4 : 3;
+    const basis = p.serviceYearsExact ? 'actual service time' : 'estimated service time';
+    return `${isSuperTwo ? 'Super Two, ' : ''}year ${yearNum} of ${totalYears} (${basis})`;
   }
 
   function fmtStatValueExt(type, v) {
@@ -1409,8 +1490,18 @@
   }
 
   // How much weight the Marcel-style multi-year projection gets when anchoring
-  // a pre-arb player's salary comps, vs. their compPct from this season alone.
+  // a player's salary comps, vs. their compPct from this season alone.
   const PROJECTION_BLEND = 0.3;
+  // Pre-arb/arb-eligible players get a much heavier multi-year weighting in
+  // directArbCompSalary (arbCompPct/arbHistoryPct, not compPct/projectedPct
+  // -- see BATTER_ARB_CONFIG above): real arbitration panels credit
+  // sustained track record (and, informally, awards/All-Star recognition
+  // this site has no data for), not just the platform season --
+  // spot-checking this model against real, documented hearing decisions
+  // (e.g. Skubal's 2026 Arb3 win, Guerrero Jr.'s 2024 Arb win) found the
+  // single-season anchor undervalued proven, multi-year-elite players by
+  // roughly 30-35%.
+  const ARB_PROJECTION_BLEND = 0.65;
 
   // Percentile-point decay scale for comp weighting below: weight =
   // e^(-distance / PROXIMITY_SCALE). Exponential rather than inverse (1/d) --
@@ -1462,6 +1553,13 @@
     return sorted[sorted.length - 1][valueKey];
   }
 
+  function median(arr) {
+    if (!arr.length) return null;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+
   // Proximity-weighted median with an adaptively widening scale: starts at
   // PROXIMITY_SCALE and widens (by PROXIMITY_SCALE_GROWTH each step) until
   // the effective sample size clears MIN_EFFECTIVE_COMPS or the scale hits
@@ -1476,6 +1574,42 @@
     }
     const items = pool.map((m, i) => ({ value: m[valueKey], weight: weights[i] }));
     return weightedMedian(items, 'value', 'weight');
+  }
+
+  // Direct peer-comp system for pre-arb/arb-eligible pay, replacing the
+  // earlier "open-market value x 40/60/80%" approach. That approach inferred
+  // a real dollar figure from the free-agent market, which is a structurally
+  // different, selection-biased population (teams only sign real contracts
+  // for players they've already decided are worth it) -- at nearly the same
+  // average performance percentile, free-agent/extension players earn ~3.6x
+  // what arb-eligible players do in this dataset, a gap the CBA discount
+  // alone doesn't explain. This instead comps a player directly against
+  // OTHER real arb-eligible players' actual settled pay (from the MLBTR
+  // scrape), which is the right population by construction. Comps at a
+  // different tier get their AAV rescaled by the ratio of CBA percentage
+  // bands (targetTier / compTier) before the median -- e.g. a 40%-tier
+  // comp's pay, viewed from an 80%-tier target, is doubled, since both are
+  // meant to derive from the same underlying open-market baseline by the
+  // CBA's own design. Performance matching still happens on compPct/
+  // projectedPct exactly as elsewhere, so this only changes which real
+  // dollars get pulled in and how they're scaled, not how "similar
+  // performance" is judged.
+  function directArbCompSalary(target, pool, targetTier) {
+    const blend = ARB_PROJECTION_BLEND;
+    // Arb-eligible players' "track record" component is the 2 seasons
+    // before their real platform season (arbTrackPct); pre-arb players
+    // (no decided salary yet, no platform season) fall back to the
+    // in-progress-season-anchored arbHistoryPct. See arbMatchPct/
+    // arbPlatformPct above for why these diverge.
+    const trackPct = isArbEligible(target) ? target.arbTrackPct : target.arbHistoryPct;
+    const anchorPct = trackPct != null
+      ? (1 - blend) * target.arbMatchPct + blend * trackPct
+      : target.arbMatchPct;
+    const compPool = pool
+      .filter(m => m !== target && m.aav != null)
+      .map(m => ({ ...m, tierNormAav: m.aav * (targetTier / arbServicePercent(m)) }));
+    if (compPool.length === 0) return null;
+    return adaptiveCompMedian(compPool, anchorPct, 'tierNormAav', 'arbMatchPct');
   }
 
   function recomputeAll() {
@@ -1501,6 +1635,77 @@
       // converted to a percentile and blended with the salary percentile.
       p.rawScore = total;
       p.breakdown = breakdown;
+
+      // Traditional-stat composite (see BATTER_ARB_CONFIG/PITCHER_ARB_CONFIG
+      // above), ranked into arbCompPct below the same way rawScore becomes
+      // compPct. Computed for every player, not just arb-eligible ones, so
+      // arb-eligible players have real peers (at any pay status) to compute
+      // a percentile against.
+      const arbCfg = p.isBatter ? BATTER_ARB_CONFIG : PITCHER_ARB_CONFIG;
+      let arbTotal = 0;
+      arbCfg.forEach(s => {
+        const val = p.stats[s.key];
+        const ps = posStats[s.key];
+        if (val != null && ps && ps.std > 0) {
+          const rawZ = (val - ps.mean) / ps.std;
+          const z = s.higherBetter ? rawZ : -rawZ;
+          arbTotal += z * s.defaultWeight;
+        }
+      });
+      p.rawArbScore = arbTotal;
+
+      // Multi-year track record on the same traditional stats, from the
+      // player's own last 3 qualifying seasons (most recent first, per
+      // build_dashboard.py), weighted 3/2/1 -- mirrors Marcel's recency
+      // weighting without needing a whole separate projection system, and
+      // keeps the "sustained performance" signal on the same real-
+      // arbitration-relevant stats as arbCompPct instead of switching back
+      // to advanced metrics for the multi-year half.
+      const arbHistEntries = (p.history || []).slice(0, 3);
+      const arbHistWeights = [3, 2, 1];
+      let arbHistTotal = 0, arbHistWeightSum = 0;
+      arbHistEntries.forEach((entry, i) => {
+        const grade = computeHistoricalArbGrade(entry, p.isBatter);
+        if (grade != null) {
+          arbHistTotal += grade * arbHistWeights[i];
+          arbHistWeightSum += arbHistWeights[i];
+        }
+      });
+      p.arbHistoryPct = arbHistWeightSum > 0 ? arbHistTotal / arbHistWeightSum : null;
+
+      // Currently arb-eligible players already have a real, settled salary
+      // -- one that was decided *before* this season started, off the prior
+      // completed ("platform") season, not off whatever they're doing right
+      // now. Anchoring their expected-value comp on in-progress current-
+      // season stats compares a real decision to a season that had nothing
+      // to do with making it (a player hurt or off to a slow start this
+      // year still got paid for a strong prior year). history[0] is their
+      // most recent completed qualifying season -- the real platform season
+      // -- with history[1]/[2] as the track record leading into it. Pre-arb
+      // players don't have a decided salary yet: they're projecting an
+      // *upcoming* case, so their in-progress current season (arbCompPct/
+      // arbHistoryPct above) is the right, forward-looking anchor.
+      if (isArbEligible(p) && p.history && p.history[0]) {
+        p.arbPlatformPct = computeHistoricalArbGrade(p.history[0], p.isBatter);
+        const trackEntries = p.history.slice(1, 3);
+        const trackWeights = [2, 1];
+        let trackTotal = 0, trackWeightSum = 0;
+        trackEntries.forEach((entry, i) => {
+          const grade = computeHistoricalArbGrade(entry, p.isBatter);
+          if (grade != null) {
+            trackTotal += grade * trackWeights[i];
+            trackWeightSum += trackWeights[i];
+          }
+        });
+        p.arbTrackPct = trackWeightSum > 0 ? trackTotal / trackWeightSum : null;
+      } else {
+        p.arbPlatformPct = null;
+        p.arbTrackPct = null;
+      }
+      // What arb-comp matching (both the anchor and the pool-matching key)
+      // should actually use: the platform-season percentile when one exists
+      // for an arb-eligible player, current-season otherwise.
+      p.arbMatchPct = p.arbPlatformPct != null ? p.arbPlatformPct : p.arbCompPct;
     });
 
     const byPos = {};
@@ -1513,14 +1718,90 @@
         p.grade = gradeFor(p.compPct);
       });
 
+      const byArbRaw = [...group].sort((a, b) => a.rawArbScore - b.rawArbScore);
+      byArbRaw.forEach((p, i) => {
+        p.arbCompPct = byArbRaw.length > 1 ? (i / (byArbRaw.length - 1)) * 100 : 100;
+      });
+    });
+
+    // League-wide (cross-position) pools of *actually* market-priced players
+    // (Free Agent / Extension only -- arb-eligible/pre-arb pay is CBA-
+    // suppressed, so letting it feed the comp pool would circularly drag
+    // "open market value" down for everyone) used below for dollar-comp
+    // matching. Splitting this strictly by position starved thin positions
+    // (as few as 8 true comps at some spots) of real market data, which let
+    // the adaptive widening below reach for a handful of expensive outliers
+    // and badly overshoot low-percentile players there. compPct above is
+    // still computed within position and still drives Score/grade -- this
+    // only widens which players are eligible to be pulled in as a dollar
+    // comp. Tradeoff worth flagging: this assumes comparable pay scales
+    // across positions at the same percentile rank, which isn't strictly
+    // true in the real market (a 90th-percentile-for-position closer isn't
+    // paid like a 90th-percentile starter) -- treat recommendedSalary as
+    // directional, not exact, especially when comparing very different
+    // position groups.
+    // Pitchers split SP/RP rather than pooled as one "pitcher" bucket --
+    // unlike the modest pay gaps between batting positions, starters and
+    // relievers are genuinely different pay markets (an elite closer's
+    // small-sample rate stats can rank alongside an elite ace's on compPct
+    // while paying a fraction as much), so merging them let elite-percentile
+    // relievers drag down comp values for elite starters and vice versa.
+    const poolFor = p => (p.isBatter ? 'batter' : p.position);
+    const leagueTrueMarket = {
+      batter: allPlayers.filter(p => p.isBatter && !p.isPreArb && !isArbEligible(p)),
+      SP: allPlayers.filter(p => p.position === 'SP' && !p.isPreArb && !isArbEligible(p)),
+      RP: allPlayers.filter(p => p.position === 'RP' && !p.isPreArb && !isArbEligible(p)),
+    };
+    // Real arb-eligible peers (same batter/SP/RP split), used by
+    // directArbCompSalary for both pre-arb and arb-eligible pay -- see that
+    // function for why this replaced deriving off the free-agent curve.
+    const arbEligiblePool = {
+      batter: allPlayers.filter(p => p.isBatter && isArbEligible(p)),
+      SP: allPlayers.filter(p => p.position === 'SP' && isArbEligible(p)),
+      RP: allPlayers.filter(p => p.position === 'RP' && isArbEligible(p)),
+    };
+
+    // Fold in real historical arb settlements (see backfill_arb_outcomes.py --
+    // 552 real outcomes across platform seasons 2022-2025, on top of the
+    // ~150-player current season) so the comp pool isn't limited to one
+    // season. Inflation is derived empirically from this same data rather
+    // than an external salary index: tier-normalize every record (current
+    // and historical) to the 80% band, take the median per season, and
+    // scale each historical season to 2026's median. Historical members are
+    // shaped to look like regular pool players (aav, serviceYears) so they
+    // flow through directArbCompSalary/adaptiveCompMedian unchanged.
+    const TIER_REF = 0.80;
+    const currentTier80 = allPlayers
+      .filter(p => isArbEligible(p) && p.aav != null)
+      .map(p => p.aav * (TIER_REF / arbServicePercent(p)));
+    const current80Median = median(currentTier80);
+    const bySeasonTier80 = {};
+    historicalArbOutcomes.forEach(r => {
+      if (r.actualSalary == null || r.serviceTime == null) return;
+      const norm = r.actualSalary * (TIER_REF / tierFromServiceYears(r.serviceTime));
+      (bySeasonTier80[r.season] = bySeasonTier80[r.season] || []).push(norm);
+    });
+    const inflationFactor = {};
+    Object.keys(bySeasonTier80).forEach(season => {
+      const seasonMedian = median(bySeasonTier80[season]);
+      inflationFactor[season] = (current80Median && seasonMedian) ? current80Median / seasonMedian : 1.0;
+    });
+
+    historicalArbOutcomes.forEach(r => {
+      if (r.actualSalary == null || r.serviceTime == null) return;
+      const arbPct = computeHistoricalArbGrade(r, r.isBatter);
+      if (arbPct == null) return;
+      const bucket = r.isBatter ? 'batter' : r.position;
+      if (!arbEligiblePool[bucket]) return;
+      arbEligiblePool[bucket].push({
+        arbMatchPct: arbPct,
+        serviceYears: r.serviceTime,
+        aav: r.actualSalary * (inflationFactor[r.season] || 1.0),
+      });
+    });
+
+    Object.values(byPos).forEach(group => {
       const marketGroup = group.filter(p => !p.isPreArb);
-      // Comps for recommendedSalary must be drawn only from *actually*
-      // market-priced players (Free Agent / Extension) -- arb-eligible
-      // players' pay is CBA-suppressed too (that's the whole reason the
-      // 40/60/80% rule below exists), so letting their AAVs feed the comp
-      // pool would circularly drag the computed "open market value" down
-      // for everyone, including other arb-eligible players.
-      const trueMarketGroup = marketGroup.filter(p => !isArbEligible(p));
       const bySalary = [...marketGroup].sort((a, b) => a.aav - b.aav);
       bySalary.forEach((p, i) => {
         p.salPct = bySalary.length > 1 ? (i / (bySalary.length - 1)) * 100 : 100;
@@ -1557,38 +1838,39 @@
       // alike), not just rookies, so it doubles as a plain-dollar complement
       // to Score for market players too ("performs like $30M, paid $8M").
       group.forEach(p => {
-        if (trueMarketGroup.length === 0) { p.recommendedSalary = null; p.paySurplus = null; return; }
+        const pool = leagueTrueMarket[poolFor(p)];
+        if (pool.length === 0) { p.recommendedSalary = null; p.paySurplus = null; return; }
         // Blend in the multi-year projection (when available) so the number
-        // isn't purely a bet on one season's small sample.
+        // isn't purely a bet on one season's small sample. Pre-arb/arb-
+        // eligible players lean on it much more heavily -- see ARB_PROJECTION_BLEND.
+        const blend = (p.isPreArb || isArbEligible(p)) ? ARB_PROJECTION_BLEND : PROJECTION_BLEND;
         const anchorPct = p.projectedPct != null
-          ? (1 - PROJECTION_BLEND) * p.compPct + PROJECTION_BLEND * p.projectedPct
+          ? (1 - blend) * p.compPct + blend * p.projectedPct
           : p.compPct;
-        const compPool = trueMarketGroup.filter(m => m !== p);
+        const compPool = pool.filter(m => m !== p);
         if (compPool.length === 0) { p.recommendedSalary = null; p.paySurplus = null; return; }
         const median = adaptiveCompMedian(compPool, anchorPct, 'aav');
         p.recommendedSalary = median;
         p.paySurplus = median - p.aav;
       });
 
-      // Pre-arb and arb-eligible players' pay is set by formula off open-
-      // market value (recommendedSalary above), not the market itself: real
-      // arbitration/extension figures land at roughly 40% of open-market
-      // value in a player's first arb-eligible year, 60% in the second, 80%
-      // in the third (see arbServicePercent). Pre-arb players are projected
-      // to their eventual Arb-1 number; currently arb-eligible players get
-      // an expected-value figure to compare against what they're actually
-      // being paid -- comparing them to the full open-market recommendedSalary
-      // instead would make every arb-eligible player look like a huge
-      // bargain, which isn't a real signal, just how the CBA suppresses pay
-      // before free agency.
+      // Pre-arb and arb-eligible players' pay is compped directly against
+      // real arb-eligible peers' actual settled pay (see
+      // directArbCompSalary) -- not derived from the open-market
+      // recommendedSalary above, which comes from a structurally different,
+      // higher-paid population. Pre-arb players are projected to their
+      // eventual Arb-1 number (tier-normalized to 40%); currently arb-
+      // eligible players get an expected-value figure at their own real
+      // tier to compare against what they're actually being paid.
       group.filter(p => p.isPreArb).forEach(p => {
-        p.projectedSalary = p.recommendedSalary != null ? p.recommendedSalary * 0.40 : null;
+        const pool = arbEligiblePool[poolFor(p)];
+        p.projectedSalary = directArbCompSalary(p, pool, 0.40);
         p.surplus = p.projectedSalary != null ? p.projectedSalary - p.aav : null;
       });
       group.filter(isArbEligible).forEach(p => {
-        if (p.recommendedSalary == null) { p.expectedArbSalary = null; p.arbSurplus = null; return; }
-        p.expectedArbSalary = p.recommendedSalary * arbServicePercent(p);
-        p.arbSurplus = p.expectedArbSalary - p.aav;
+        const pool = arbEligiblePool[poolFor(p)];
+        p.expectedArbSalary = directArbCompSalary(p, pool, arbServicePercent(p));
+        p.arbSurplus = p.expectedArbSalary != null ? p.expectedArbSalary - p.aav : null;
       });
     });
 

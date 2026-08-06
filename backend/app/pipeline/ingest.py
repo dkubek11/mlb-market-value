@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -21,6 +23,7 @@ from app.pipeline import (
     fangraphs_salary,
     fielding_metrics,
     mlb_stats_api,
+    mlbtr_arbitration,
     statcast_extension,
     statcast_metrics,
 )
@@ -78,6 +81,38 @@ def _compute_fip_constant(pitching_splits: list[dict]) -> Decimal:
     return league_era - raw_component
 
 
+def _normalize_name(name: str) -> str:
+    """Strips accents/punctuation/case so names from different sources (MLB
+    Stats API's players.full_name vs. MLBTR's article text) compare equal --
+    e.g. 'José Soriano' and 'Jose Soriano' both normalize to 'jose soriano'."""
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z\s]", "", ascii_name.lower())).strip()
+
+
+def _match_service_times(db: Session, service_times: dict[str, float]) -> dict[int, float]:
+    """Maps MLBTR player names to player_id via normalized full_name. MLBTR
+    has no MLBAM IDs to join on directly (unlike RosterResource), so this is
+    the only source that needs name matching -- misses are logged and simply
+    left without real service_time (the debut-year proxy is used downstream
+    instead)."""
+    all_players = db.query(Player.player_id, Player.full_name).all()
+    by_normalized = {_normalize_name(name): pid for pid, name in all_players}
+
+    matched: dict[int, float] = {}
+    unmatched = []
+    for name, svc in service_times.items():
+        pid = by_normalized.get(_normalize_name(name))
+        if pid is not None:
+            matched[pid] = svc
+        else:
+            unmatched.append(name)
+
+    if unmatched:
+        print(f"  (MLBTR service-time name matches: {len(matched)}/{len(service_times)}; "
+              f"unmatched: {', '.join(unmatched[:10])}{'...' if len(unmatched) > 10 else ''})")
+    return matched
+
+
 def _resolve_team_id(split: dict, season: int, group: str) -> int | None:
     if split.get("numTeams", 1) <= 1:
         return split["team"]["id"]
@@ -120,6 +155,7 @@ def _ingest_salaries(
     resolved_teams: dict[int, int],
     salary_rows: list[dict],
     abbreviation_to_team_id: dict[str, int],
+    service_times: dict[int, float],
 ) -> tuple[int, int]:
     rows_by_player: dict[int, list[dict]] = {}
     for row in salary_rows:
@@ -146,6 +182,7 @@ def _ingest_salaries(
             skipped += 1
             continue
 
+        svc = service_times.get(pid)
         db.merge(
             PlayerSalary(
                 player_id=pid,
@@ -155,6 +192,7 @@ def _ingest_salaries(
                 aav=Decimal(str(chosen["aav"])),
                 contract_years_total=chosen["contract_years_total"],
                 contract_type=chosen["contract_type"],
+                service_time=Decimal(str(svc)) if svc is not None else None,
                 source=SOURCE_SALARY,
                 scraped_at=now,
             )
@@ -254,6 +292,7 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
                 bb_rate=(Decimal(stat["baseOnBalls"]) / pa) if pa else None,
                 chase_rate=pd_row.get("chase_rate"),
                 whiff_rate=pd_row.get("whiff_rate"),
+                war=pd_row.get("war"),
                 source=SOURCE_STATS,
                 scraped_at=now,
             )
@@ -322,6 +361,7 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
                 extension=pitcher_extension.get(pid),
                 stuff_plus=pd_row.get("stuff_plus"),
                 location_plus=pd_row.get("location_plus"),
+                war=pd_row.get("war"),
                 source=SOURCE_STATS,
                 scraped_at=now,
             )
@@ -371,8 +411,16 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
             _upsert_players(db, new_player_ids)
             db.commit()
 
+        print(f"[{season}] fetching real service time from MLB Trade Rumors arbitration tracker...")
+        try:
+            raw_service_times = mlbtr_arbitration.fetch_service_times(season)
+            service_times = _match_service_times(db, raw_service_times)
+        except Exception as exc:  # tracker page may not exist yet for a future/unsettled season
+            print(f"  (MLBTR arbitration tracker unavailable for {season}: {exc})")
+            service_times = {}
+
         ingested_salaries, skipped_salaries = _ingest_salaries(
-            db, season, now, resolved_teams, salary_rows, abbreviation_to_team_id
+            db, season, now, resolved_teams, salary_rows, abbreviation_to_team_id, service_times
         )
         db.commit()
     else:

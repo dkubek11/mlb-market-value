@@ -87,6 +87,13 @@ class PlayerSalary(Base):
     aav: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     contract_years_total: Mapped[int | None] = mapped_column(SmallInteger)
     contract_type: Mapped[str | None] = mapped_column(String(40))
+    # Real accrued MLB service time (years.days, e.g. 3.159 = 3 years, 159
+    # days) as of that season's arbitration cycle, scraped from MLB Trade
+    # Rumors' arbitration tracker -- the authoritative figure MLB itself uses
+    # to determine Arb1/2/3 and Super Two status. Only populated for players
+    # who appear in that season's tracker (i.e. actually arbitration-
+    # eligible that year); null otherwise.
+    service_time: Mapped[Decimal | None] = mapped_column(Numeric(5, 3))
     source: Mapped[str] = mapped_column(String(20))
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -119,6 +126,7 @@ class BatterStats(Base):
     bb_rate: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     chase_rate: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     whiff_rate: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    war: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     source: Mapped[str] = mapped_column(String(20))
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -155,6 +163,7 @@ class PitcherStats(Base):
     # FanGraphs pitch-modeling grades, scaled to 100 = league average.
     stuff_plus: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     location_plus: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    war: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     source: Mapped[str] = mapped_column(String(20))
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -199,3 +208,22 @@ class TeamPayrollSummary(Base):
     total_payroll: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     avg_value_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ArbOutcome(Base):
+    """Real, historical arbitration settlement/award outcomes scraped from MLB
+    Trade Rumors' yearly arbitration tracker posts -- used to comp pre-arb/
+    arb-eligible players against real multi-year peer outcomes instead of
+    just the current season's ~150-player pool. platform_season is the
+    performance season the salary/service_time were decided on (tracker
+    year minus 1); service_time is MLB's own real accrued-days figure, the
+    actual CBA input (not the debut-year proxy used as a fallback elsewhere)."""
+
+    __tablename__ = "arb_outcomes"
+
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.player_id"), primary_key=True)
+    platform_season: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    service_time: Mapped[Decimal] = mapped_column(Numeric(5, 3))
+    actual_salary: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    source: Mapped[str] = mapped_column(String(20))
+    scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

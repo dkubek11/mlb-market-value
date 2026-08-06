@@ -1,0 +1,73 @@
+import re
+
+import requests
+
+TRACKER_URL = "https://www.mlbtraderumors.com/{season}/01/{season}-arbitration-tracker.html"
+
+# MLBTR's tracker lists every arbitration-eligible player for the season as
+# an <li> under a team heading: bold-linked name, then "(service.time):" then
+# the settlement/hearing outcome. e.g.
+#   <li><strong><a href="...">Reid Detmers</a></strong> (3.159): No agreement...</li>
+# The service-time figure is MLB's own accrued-days number (years.days, e.g.
+# 3.159 = 3 years, 159 days) -- the actual input to the CBA's Arb1/2/3 and
+# Super Two rules, not something derivable from any stats API.
+_ENTRY_RE = re.compile(r"<li><strong><a[^>]*>([^<]+)</a></strong>\s*\(([\d.]+)\):")
+
+
+def fetch_service_times(season: int) -> dict[str, float]:
+    """Returns {player_name: service_time} for every player in that season's
+    MLBTR arbitration tracker, keyed by the name as printed on the page.
+    Matching to player_id happens in ingest.py against players.full_name --
+    this module only knows about MLBTR's own text."""
+    resp = requests.get(
+        TRACKER_URL.format(season=season), timeout=30, headers={"User-Agent": "Mozilla/5.0"}
+    )
+    resp.raise_for_status()
+    resp.encoding = "utf-8"
+    return {name.strip(): float(svc) for name, svc in _ENTRY_RE.findall(resp.text)}
+
+
+# Same tracker entries as above, but also captures the free-text outcome
+# (everything between "):" and "</li>") so a real settled dollar figure can
+# be pulled out of it for historical seasons -- fetch_service_times only
+# needs the service-time number for the live/current year.
+_HISTORICAL_ENTRY_RE = re.compile(
+    r"<li><strong><a[^>]*>([^<]+)</a></strong>\s*\(([\d.]+)\):(.*?)</li>", re.DOTALL
+)
+_DOLLAR_RE = re.compile(r"\$([\d,.]+)\s*(MM|M|K)\b")
+
+# Older tracker posts don't follow the current {season}/01/{season}-
+# arbitration-tracker.html URL pattern. 2023's slug has an extra "mlb-".
+# 2022's deadline (delayed by that offseason's lockout) lives under a
+# bespoke "arbtracker2022" URL using a different page template entirely
+# (no <li><strong> structure at all) -- not scraped here, not worth
+# bespoke parsing for one extra year of data.
+_HISTORICAL_URL_OVERRIDES = {
+    2023: "https://www.mlbtraderumors.com/2023/01/2023-mlb-arbitration-tracker.html",
+}
+
+
+def _parse_dollar(text: str) -> float | None:
+    match = _DOLLAR_RE.search(text)
+    if not match:
+        return None
+    amount = float(match.group(1).replace(",", ""))
+    unit = match.group(2)
+    return amount * (1_000_000 if unit in ("MM", "M") else 1_000)
+
+
+def fetch_historical_outcomes(season: int) -> list[dict]:
+    """Returns [{name, service_time, salary}] for a past season's tracker.
+    salary is the real settled/awarded dollar figure, or None if this
+    particular post never resolved to a clean one (~10% of entries in
+    practice -- an unresolved hearing as of publication, or a multi-year/
+    option deal MLBTR described in prose instead of a plain "$X agreement").
+    Entries with salary=None should be dropped by the caller, not guessed at."""
+    url = _HISTORICAL_URL_OVERRIDES.get(season, TRACKER_URL.format(season=season))
+    resp = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+    resp.raise_for_status()
+    resp.encoding = "utf-8"
+    return [
+        {"name": name.strip(), "service_time": float(svc), "salary": _parse_dollar(outcome)}
+        for name, svc, outcome in _HISTORICAL_ENTRY_RE.findall(resp.text)
+    ]
