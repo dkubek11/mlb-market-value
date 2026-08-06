@@ -836,6 +836,25 @@
 
   const CURRENT_SEASON = 2026;
 
+  // Still team-controlled (pre-arb/arb-eligible) players reach free agency
+  // for the first time at 6.000 years of service -- serviceYears may be the
+  // (less precise) debut-year proxy for anyone MLBTR's tracker doesn't
+  // cover (it only lists the current year's arbitration class), same
+  // caveat as arbYearLabel above. Once a player HAS already reached free
+  // agency and signed a new deal, service time stops meaning anything for
+  // "when's their next free agency" -- only that contract's own end year
+  // does, which is why this branches on contract/control status rather
+  // than checking service time for every player uniformly (a 16-year
+  // veteran mid-contract isn't "nearing free agency" just because their
+  // service time is deep past 6.000).
+  function isNearingFreeAgency(p) {
+    if (p.isPreArb || isArbEligible(p)) {
+      return p.serviceYears != null && p.serviceYears + 1 >= 6.0;
+    }
+    const contract = contracts[p.id];
+    return !!(contract && contract.endSeasonAll === CURRENT_SEASON);
+  }
+
   function contractYearRow(y) {
     const isCurrent = y.season === CURRENT_SEASON;
     const salaryText = y.salary != null ? fmtMoney(y.salary) : (y.type ? y.type.replace(/_/g, ' ').toLowerCase() : '—');
@@ -1015,6 +1034,18 @@
       </div>`;
     }
 
+    let outlookHtml = '';
+    if (record.projectedPct != null && record.projectedMarketValue != null) {
+      const pendingFA = isNearingFreeAgency(record);
+      outlookHtml = `
+        <div class="card-section-title">${pendingFA ? 'Pending Free Agent' : 'Next-Season Outlook'}</div>
+        <div class="card-value-box">
+          <div class="card-stat-label">${pendingFA ? 'Projected Free Agent Value' : 'Projected Next-Season Value'}</div>
+          <div class="card-projected">${fmtMoney(record.projectedMarketValue)}</div>
+          <div class="card-value-note">${record.projectedPct.toFixed(1)}th percentile projected performance for ${record.position} (Marcel + comparable-player blend) — ${pendingFA ? 'reaches free agency by next season, so this reflects' : 'not yet on the open market; this is'} projected future performance, not this season's stats.</div>
+        </div>`;
+    }
+
     const contractHtml = renderContractSection(record);
     const historyHtml = historySectionHtml(record);
 
@@ -1034,6 +1065,7 @@
           ${regressionHtml}
           ${contractHtml}
           ${valueHtml}
+          ${outlookHtml}
           <div class="card-section-title">${record.isBatter ? 'Hitting' : 'Pitching'} vs. ${record.position} average</div>
           <div class="card-stats-grid">${statGrid(record, statSet)}</div>
           ${fieldingHtml}
@@ -1872,6 +1904,15 @@
         const median = adaptiveCompMedian(compPool, anchorPct, 'aav');
         p.recommendedSalary = median;
         p.paySurplus = median - p.aav;
+
+        // Pure forward-looking market value: what this player's PROJECTED
+        // (not current) performance says they'd be worth on the open
+        // market -- anchored entirely on projectedPct, not blended with
+        // this season's compPct like recommendedSalary above. Powers the
+        // card's "Next-Season Outlook" / "Pending Free Agent" section.
+        p.projectedMarketValue = p.projectedPct != null
+          ? adaptiveCompMedian(compPool, p.projectedPct, 'aav')
+          : null;
       });
 
       // Pre-arb and arb-eligible players' pay is compped directly against
