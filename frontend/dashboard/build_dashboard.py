@@ -265,15 +265,16 @@ pitcher_history_by_player = _history_rows(hist_pitchers, PITCHER_STATS)
 def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map):
     proj = proj_map.get(int(r.player_id), {})
     debut_date = getattr(r, "debut_date", None)
-    # Real accrued MLB service time (years.days), scraped from MLB Trade
-    # Rumors' arbitration tracker -- the actual figure the CBA's Arb1/2/3 and
-    # Super Two rules are based on. Only present for players who appear in
-    # that season's tracker (i.e. currently arbitration-eligible). For
-    # everyone else (pre-arb rookies not yet tracker-eligible, or a rare
-    # MLBTR name-match miss), fall back to an approximate proxy: years since
-    # MLB debut. That proxy won't account for time on optional assignment,
-    # injury rehab stints, etc., so it can misclassify -- serviceYearsExact
-    # tells the frontend which case it's looking at.
+    # Real accrued MLB service time (years.days) -- the actual figure the
+    # CBA's Arb1/2/3 and Super Two rules are based on. Sourced primarily from
+    # FanGraphs RosterResource's own contract data (joined by MLBAM ID,
+    # covers pre-arb through guaranteed-contract players), with MLB Trade
+    # Rumors' arbitration tracker as a secondary source for anyone RosterResource
+    # missed. For the remainder (a rare miss in both, or a player off any
+    # tracked roster), fall back to an approximate proxy: years since MLB
+    # debut. That proxy won't account for time on optional assignment, injury
+    # rehab stints, etc., so it can misclassify -- serviceYearsExact tells the
+    # frontend which case it's looking at.
     real_service = getattr(r, "service_time", None)
     if real_service is not None and pd.notna(real_service):
         service_years = float(real_service)

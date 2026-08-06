@@ -1037,12 +1037,19 @@
     let outlookHtml = '';
     if (record.projectedPct != null && record.projectedMarketValue != null) {
       const pendingFA = isNearingFreeAgency(record);
+      // The service-time branch of isNearingFreeAgency (team-controlled
+      // players) can be wrong when serviceYears is the debut-year proxy
+      // rather than a real accrued figure -- surface that the same way the
+      // arb-tier label already does, so a bad FA call isn't silently trusted.
+      const faBasisNote = pendingFA && (record.isPreArb || isArbEligible(record)) && !record.serviceYearsExact
+        ? ` Free-agency timing here is based on an estimated (not confirmed) service-time figure.`
+        : '';
       outlookHtml = `
         <div class="card-section-title">${pendingFA ? 'Pending Free Agent' : 'Next-Season Outlook'}</div>
         <div class="card-value-box">
           <div class="card-stat-label">${pendingFA ? 'Projected Free Agent Value' : 'Projected Next-Season Value'}</div>
           <div class="card-projected">${fmtMoney(record.projectedMarketValue)}</div>
-          <div class="card-value-note">${record.projectedPct.toFixed(1)}th percentile projected performance for ${record.position} (Marcel + comparable-player blend) — ${pendingFA ? 'reaches free agency by next season, so this reflects' : 'not yet on the open market; this is'} projected future performance, not this season's stats.</div>
+          <div class="card-value-note">${record.projectedPct.toFixed(1)}th percentile projected performance for ${record.position} (Marcel + comparable-player blend) — ${pendingFA ? 'reaches free agency by next season, so this reflects' : 'not yet on the open market; this is'} projected future performance, not this season's stats.${faBasisNote}</div>
         </div>`;
     }
 

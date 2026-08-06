@@ -419,6 +419,16 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
             print(f"  (MLBTR arbitration tracker unavailable for {season}: {exc})")
             service_times = {}
 
+        # RosterResource's own service_time (already pulled per-row above via
+        # MLBAMID, no name matching) covers pre-arb and guaranteed-contract
+        # players too, not just the arb-eligible subset MLBTR's tracker lists --
+        # prefer it wherever both sources have an entry for the same player.
+        fg_service_times = {
+            r["player_id"]: r["service_time"] for r in salary_rows if r.get("service_time") is not None
+        }
+        print(f"  (RosterResource service-time coverage: {len(fg_service_times)}/{len(salary_player_ids)} salaried players)")
+        service_times = {**service_times, **fg_service_times}
+
         ingested_salaries, skipped_salaries = _ingest_salaries(
             db, season, now, resolved_teams, salary_rows, abbreviation_to_team_id, service_times
         )
