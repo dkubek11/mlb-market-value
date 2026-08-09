@@ -672,6 +672,10 @@
   const rosters = DATA.rosters || {};
   const teamColors = DATA.teamColors || {};
   const contracts = DATA.contracts || {};
+  // Empirical 10th-percentile year-over-year raise from real consecutive-
+  // season arb settlements (see build_dashboard.py) -- most returning arb
+  // players get a real raise, not just legal-floor protection from a cut.
+  const ARB_RAISE_FLOOR_PCT = DATA.arbRaiseFloorPct || 0;
   const teamNameByAbbr = Object.fromEntries(teams.map(t => [t.abbr, t.name]));
   const marketCount = allPlayers.filter(p => !p.isPreArb).length;
   const preArbCount = allPlayers.filter(p => p.isPreArb).length;
@@ -1049,7 +1053,9 @@
           ? ` This estimate's arbitration tier is based on an estimated (not confirmed) service-time figure.`
           : '';
         const floorNote = record.projectedArbFloored
-          ? ` This is the CBA's max-cut floor (can't fall below 80% of this year's real pay, or 70% of last year's), not a pure comp -- the stat-based case alone would have landed lower.`
+          ? (record.projectedArbFloorIsEmpirical
+              ? ` This reflects a real-world floor, not a pure comp — returning arb players almost never see a cut (only ~3% of real year-over-year settlements do, and even the worst 10% still got at least a ${(ARB_RAISE_FLOOR_PCT * 100).toFixed(0)}% raise); the stat-based case alone would have landed lower.`
+              : ` This is the CBA's max-cut floor (can't fall below 80% of this year's real pay, or 70% of last year's), not a pure comp -- the stat-based case alone would have landed lower.`)
           : '';
         outlookHtml = `
           <div class="card-section-title">Next-Season Outlook</div>
@@ -2065,12 +2071,22 @@
           ? (1 - blend) * p.arbCompPct + blend * p.arbHistoryPct
           : p.arbCompPct;
         const compBased = directArbCompSalary(p, pool, nextTier, forwardAnchor);
-        // Floored against NEXT season -- 80% of this year's real aav, 70% of
-        // last year's real arb settlement (if we have one; pre-arb players
-        // never do, so this is a no-op for them and comp-based drives it).
-        const floor = arbCutFloor(p, CURRENT_SEASON + 1);
+        // Two floors against NEXT season: the legal one (80% of this year's
+        // real aav, 70% of last year's real settlement), and the empirical
+        // one (ARB_RAISE_FLOOR_PCT -- what a real returning arb player
+        // almost always gets at minimum, well above the bare legal cut
+        // limit). Only the empirical floor applies to currently arb-eligible
+        // players specifically -- it was measured on real arb-to-arb
+        // transitions, not pre-arb-to-Arb1 ones. Track which floor actually
+        // won so the card note is accurate about why.
+        const legalFloor = arbCutFloor(p, CURRENT_SEASON + 1);
+        const empiricalFloor = isArbEligible(p) ? p.aav * (1 + ARB_RAISE_FLOOR_PCT) : null;
+        const floorCandidates = [legalFloor, empiricalFloor].filter(f => f != null);
+        const floor = floorCandidates.length > 0 ? Math.max(...floorCandidates) : null;
         p.projectedArbSalary = (floor != null && (compBased == null || floor > compBased)) ? floor : compBased;
         p.projectedArbFloored = floor != null && (compBased == null || floor > compBased);
+        p.projectedArbFloorIsEmpirical = p.projectedArbFloored
+          && empiricalFloor != null && empiricalFloor >= (legalFloor == null ? -Infinity : legalFloor);
       });
     });
 

@@ -250,6 +250,30 @@ for pid, grp in arb_salary_hist_df.groupby("player_id"):
         for row in grp.itertuples()
     }
 
+# Real arb-eligible pay raises/cuts almost never happen: in this dataset's
+# actual consecutive-year settlements, only ~3% were cuts, and those hit
+# almost exactly the legal 20% floor -- tier progression (Arb1 -> Arb2 ->
+# Arb3 pays a bigger % of the same underlying value each year) means most
+# returning arb players get a real raise even off a mediocre platform
+# season. The bare CBA floor above only stops an illegal cut; it doesn't
+# reflect how rarely teams actually go anywhere near it. This computes the
+# empirical "worst realistic case" raise (a low percentile, not the median,
+# so it doesn't overwrite a comp-based case that's genuinely earned more)
+# directly from real year-over-year settlements, so it updates on its own
+# as more seasons of real data come in rather than being a hand-picked number.
+RAISE_PAIRS_Q = text("""
+    SELECT a.actual_salary AS s1, b.actual_salary AS s2
+    FROM arb_outcomes a
+    JOIN arb_outcomes b ON a.player_id = b.player_id AND b.platform_season = a.platform_season + 1
+""")
+raise_pairs = pd.read_sql(RAISE_PAIRS_Q, engine)
+if len(raise_pairs) >= 20:
+    raises = sorted((raise_pairs["s2"] - raise_pairs["s1"]) / raise_pairs["s1"])
+    arb_raise_floor_pct = float(raises[int(len(raises) * 0.10)])
+else:
+    arb_raise_floor_pct = 0.0
+print(f"[{season}] empirical arb raise floor (10th percentile of {len(raise_pairs)} real year-over-year settlements): {arb_raise_floor_pct*100:.1f}%")
+
 # {season: {position: {stat: {mean, std}}}} -- same shape and method as the
 # current-season positionStats, just computed separately per historical
 # season so a player's history is scored against *that* season's peers.
@@ -457,6 +481,7 @@ out = {
     "rosters": rosters,
     "teamColors": team_colors,
     "contracts": contracts,
+    "arbRaiseFloorPct": arb_raise_floor_pct,
     "capturedAt": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
 }
 with open(HERE / "dashboard_data.json", "w", encoding="utf-8") as f:
