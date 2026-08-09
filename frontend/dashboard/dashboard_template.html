@@ -1662,17 +1662,23 @@
   // projectedPct exactly as elsewhere, so this only changes which real
   // dollars get pulled in and how they're scaled, not how "similar
   // performance" is judged.
-  function directArbCompSalary(target, pool, targetTier) {
+  function directArbCompSalary(target, pool, targetTier, anchorPctOverride) {
     const blend = ARB_PROJECTION_BLEND;
     // Arb-eligible players' "track record" component is the 2 seasons
     // before their real platform season (arbTrackPct); pre-arb players
     // (no decided salary yet, no platform season) fall back to the
     // in-progress-season-anchored arbHistoryPct. See arbMatchPct/
-    // arbPlatformPct above for why these diverge.
-    const trackPct = isArbEligible(target) ? target.arbTrackPct : target.arbHistoryPct;
-    const anchorPct = trackPct != null
-      ? (1 - blend) * target.arbMatchPct + blend * trackPct
-      : target.arbMatchPct;
+    // arbPlatformPct above for why these diverge. anchorPctOverride skips
+    // all of this -- used for next-season projections, where the anchor
+    // needs to be this in-progress season (soon to be the real platform
+    // year), not the already-decided platform season this logic assumes.
+    let anchorPct = anchorPctOverride;
+    if (anchorPct == null) {
+      const trackPct = isArbEligible(target) ? target.arbTrackPct : target.arbHistoryPct;
+      anchorPct = trackPct != null
+        ? (1 - blend) * target.arbMatchPct + blend * trackPct
+        : target.arbMatchPct;
+    }
     const compPool = pool
       .filter(m => m !== target && m.aav != null)
       .map(m => ({ ...m, tierNormAav: m.aav * (targetTier / arbServicePercent(m)) }));
@@ -1965,13 +1971,27 @@
       // players -- the open-market projectedMarketValue below is what a
       // player isn't actually eligible to be paid yet, and real arbitration
       // panels look at demonstrated performance/track record, not a
-      // projected future stat line, so this intentionally reuses the same
-      // arbMatchPct/arbTrackPct anchor as this season's arb figures instead
-      // of projectedPct.
+      // projected future stat line.
+      //
+      // Crucially, this can't reuse expectedArbSalary's arbMatchPct/
+      // arbTrackPct anchor: that anchor is deliberately pinned to the
+      // *already-decided* platform season (last year), since that's what a
+      // real panel actually used to set this year's pay. But THIS season is
+      // what becomes next year's real platform season -- so a hot in-progress
+      // year needs to show up here even though it can't move expectedArbSalary.
+      // arbCompPct (this season's traditional-stat percentile, computed for
+      // every player) blended with arbHistoryPct (recent track record) is
+      // exactly that forward-looking anchor -- the same one pre-arb players'
+      // projectedSalary already uses, just applied here regardless of current
+      // arb-eligibility status.
       group.filter(p => p.isPreArb || isArbEligible(p)).forEach(p => {
         const pool = arbEligiblePool[poolFor(p)];
         const nextTier = tierFromServiceYears((p.serviceYears != null ? p.serviceYears : 0) + 1);
-        p.projectedArbSalary = directArbCompSalary(p, pool, nextTier);
+        const blend = ARB_PROJECTION_BLEND;
+        const forwardAnchor = p.arbHistoryPct != null
+          ? (1 - blend) * p.arbCompPct + blend * p.arbHistoryPct
+          : p.arbCompPct;
+        p.projectedArbSalary = directArbCompSalary(p, pool, nextTier, forwardAnchor);
       });
     });
 
