@@ -1035,13 +1035,30 @@
     }
 
     let outlookHtml = '';
-    if (record.projectedPct != null && record.projectedMarketValue != null) {
-      const pendingFA = isNearingFreeAgency(record);
+    const teamControlled = record.isPreArb || isArbEligible(record);
+    const pendingFA = isNearingFreeAgency(record);
+    if (teamControlled && !pendingFA) {
+      // Still team-controlled and not reaching free agency next season --
+      // show what arbitration/pre-arb pay actually looks like one tier out,
+      // not an open-market figure this player can't legally be paid yet.
+      if (record.projectedArbSalary != null) {
+        const tierNote = !record.serviceYearsExact
+          ? ` This estimate's arbitration tier is based on an estimated (not confirmed) service-time figure.`
+          : '';
+        outlookHtml = `
+          <div class="card-section-title">Next-Season Outlook</div>
+          <div class="card-value-box">
+            <div class="card-stat-label">Projected Next-Season Arbitration Value</div>
+            <div class="card-projected">${fmtMoney(record.projectedArbSalary)}</div>
+            <div class="card-value-note">Still under team control next season — comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-advanced to next year's expected arbitration tier. Based on this season's performance and track record, the same basis a real arbitration panel uses.${tierNote}</div>
+          </div>`;
+      }
+    } else if (record.projectedPct != null && record.projectedMarketValue != null) {
       // The service-time branch of isNearingFreeAgency (team-controlled
       // players) can be wrong when serviceYears is the debut-year proxy
       // rather than a real accrued figure -- surface that the same way the
       // arb-tier label already does, so a bad FA call isn't silently trusted.
-      const faBasisNote = pendingFA && (record.isPreArb || isArbEligible(record)) && !record.serviceYearsExact
+      const faBasisNote = pendingFA && teamControlled && !record.serviceYearsExact
         ? ` Free-agency timing here is based on an estimated (not confirmed) service-time figure.`
         : '';
       outlookHtml = `
@@ -1939,6 +1956,22 @@
         const pool = arbEligiblePool[poolFor(p)];
         p.expectedArbSalary = directArbCompSalary(p, pool, arbServicePercent(p));
         p.arbSurplus = p.expectedArbSalary != null ? p.expectedArbSalary - p.aav : null;
+      });
+
+      // Next season's arbitration-process estimate for anyone still under
+      // team control: same real arb-eligible comp pool as expectedArbSalary/
+      // projectedSalary above, just tier-advanced one service year. This is
+      // what the "Next-Season Outlook" card section shows for team-controlled
+      // players -- the open-market projectedMarketValue below is what a
+      // player isn't actually eligible to be paid yet, and real arbitration
+      // panels look at demonstrated performance/track record, not a
+      // projected future stat line, so this intentionally reuses the same
+      // arbMatchPct/arbTrackPct anchor as this season's arb figures instead
+      // of projectedPct.
+      group.filter(p => p.isPreArb || isArbEligible(p)).forEach(p => {
+        const pool = arbEligiblePool[poolFor(p)];
+        const nextTier = tierFromServiceYears((p.serviceYears != null ? p.serviceYears : 0) + 1);
+        p.projectedArbSalary = directArbCompSalary(p, pool, nextTier);
       });
     });
 
