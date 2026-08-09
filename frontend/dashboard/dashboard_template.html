@@ -1016,8 +1016,11 @@
       const recPayNote = record.recommendedSalary != null
         ? `<div class="card-value-note">Recommended pay: <strong>${fmtMoney(record.recommendedSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.paySurplus / 1e6)}M)</div>`
         : '';
+      const arbFloorNote = record.expectedArbFloored
+        ? ` This is the CBA's max-cut floor (can't fall below 80% of last year's real pay, or 70% of two years ago), not a pure comp -- the stat-based case alone would have landed lower.`
+        : '';
       const arbNote = (isArbEligible(record) && record.expectedArbSalary != null)
-        ? `<div class="card-value-note">Arbitration-eligible — ${arbYearLabel(record)}. Comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-adjusted to ~${Math.round(arbServicePercent(record) * 100)}%: expected <strong>${fmtMoney(record.expectedArbSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.arbSurplus / 1e6)}M).${accomplishmentsNote(record)}</div>`
+        ? `<div class="card-value-note">Arbitration-eligible — ${arbYearLabel(record)}. Comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-adjusted to ~${Math.round(arbServicePercent(record) * 100)}%: expected <strong>${fmtMoney(record.expectedArbSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.arbSurplus / 1e6)}M).${accomplishmentsNote(record)}${arbFloorNote}</div>`
         : '';
       valueHtml = `<div class="card-value-box">
         <div class="card-stat-label">Score</div>
@@ -1045,12 +1048,15 @@
         const tierNote = !record.serviceYearsExact
           ? ` This estimate's arbitration tier is based on an estimated (not confirmed) service-time figure.`
           : '';
+        const floorNote = record.projectedArbFloored
+          ? ` This is the CBA's max-cut floor (can't fall below 80% of this year's real pay, or 70% of last year's), not a pure comp -- the stat-based case alone would have landed lower.`
+          : '';
         outlookHtml = `
           <div class="card-section-title">Next-Season Outlook</div>
           <div class="card-value-box">
             <div class="card-stat-label">Projected Next-Season Arbitration Value</div>
             <div class="card-projected">${fmtMoney(record.projectedArbSalary)}</div>
-            <div class="card-value-note">Still under team control next season — comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-advanced to next year's expected arbitration tier. Based on this season's performance and track record, the same basis a real arbitration panel uses.${accomplishmentsNote(record)}${tierNote}</div>
+            <div class="card-value-note">Still under team control next season — comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-advanced to next year's expected arbitration tier. Based on this season's performance and track record, the same basis a real arbitration panel uses.${accomplishmentsNote(record)}${floorNote}${tierNote}</div>
           </div>`;
       }
     } else if (record.projectedPct != null && record.projectedMarketValue != null) {
@@ -1705,6 +1711,26 @@
     return ` Includes a +${credit.toFixed(1)}-percentile accomplishments credit (${list}).`;
   }
 
+  // Real CBA rule: a team's offer to an arb-eligible player can't be cut
+  // more than 20% below what they made the season before, or more than 30%
+  // below what they made two seasons before that -- a hard salary floor,
+  // not a comp-based estimate. actualSalaryPaidIn/arbCutFloor only use real
+  // paid figures (this season's aav, or a resolved arb_outcomes settlement
+  // from arbSalaryHistory) and return null rather than guess when a prior
+  // season's real pay isn't known.
+  function actualSalaryPaidIn(p, yr) {
+    if (yr === CURRENT_SEASON) return p.aav;
+    return p.arbSalaryHistory ? p.arbSalaryHistory[String(yr)] : undefined;
+  }
+  function arbCutFloor(p, forSeason) {
+    const prevSalary = actualSalaryPaidIn(p, forSeason - 1);
+    const prevPrevSalary = actualSalaryPaidIn(p, forSeason - 2);
+    const floors = [];
+    if (prevSalary != null) floors.push(0.80 * prevSalary);
+    if (prevPrevSalary != null) floors.push(0.70 * prevPrevSalary);
+    return floors.length > 0 ? Math.max(...floors) : null;
+  }
+
   function directArbCompSalary(target, pool, targetTier, anchorPctOverride) {
     const blend = ARB_PROJECTION_BLEND;
     // Arb-eligible players' "track record" component is the 2 seasons
@@ -2004,7 +2030,10 @@
       });
       group.filter(isArbEligible).forEach(p => {
         const pool = arbEligiblePool[poolFor(p)];
-        p.expectedArbSalary = directArbCompSalary(p, pool, arbServicePercent(p));
+        const compBased = directArbCompSalary(p, pool, arbServicePercent(p));
+        const floor = arbCutFloor(p, CURRENT_SEASON);
+        p.expectedArbSalary = (floor != null && (compBased == null || floor > compBased)) ? floor : compBased;
+        p.expectedArbFloored = floor != null && (compBased == null || floor > compBased);
         p.arbSurplus = p.expectedArbSalary != null ? p.expectedArbSalary - p.aav : null;
       });
 
@@ -2035,7 +2064,13 @@
         const forwardAnchor = p.arbHistoryPct != null
           ? (1 - blend) * p.arbCompPct + blend * p.arbHistoryPct
           : p.arbCompPct;
-        p.projectedArbSalary = directArbCompSalary(p, pool, nextTier, forwardAnchor);
+        const compBased = directArbCompSalary(p, pool, nextTier, forwardAnchor);
+        // Floored against NEXT season -- 80% of this year's real aav, 70% of
+        // last year's real arb settlement (if we have one; pre-arb players
+        // never do, so this is a no-op for them and comp-based drives it).
+        const floor = arbCutFloor(p, CURRENT_SEASON + 1);
+        p.projectedArbSalary = (floor != null && (compBased == null || floor > compBased)) ? floor : compBased;
+        p.projectedArbFloored = floor != null && (compBased == null || floor > compBased);
       });
     });
 

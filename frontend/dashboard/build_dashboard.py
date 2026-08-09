@@ -229,6 +229,27 @@ for pid, grp in awards_df.groupby("player_id"):
         for row in grp.sort_values("season", ascending=False).itertuples()
     ]
 
+print(f"[{season}] querying real arb-salary history (for the CBA max-cut floor)...")
+# The CBA caps how much a team can cut an arb-eligible player's pay: no more
+# than 20% below last year's salary, and no more than 30% below the salary
+# from two years before that. arb_outcomes.actual_salary for platform_season
+# P is what the player was actually PAID in calendar year P+1 (decided off
+# performance in P) -- rekey by the season it was paid so the frontend can
+# just look up "what did this player make in season Y".
+ARB_SALARY_HISTORY_Q = text("""
+    SELECT player_id, platform_season, actual_salary FROM arb_outcomes
+    WHERE platform_season BETWEEN :start_platform AND :end_platform
+""")
+arb_salary_hist_df = pd.read_sql(
+    ARB_SALARY_HISTORY_Q, engine, params={"start_platform": season - 3, "end_platform": season - 2}
+)
+arb_salary_history_by_player = {}
+for pid, grp in arb_salary_hist_df.groupby("player_id"):
+    arb_salary_history_by_player[int(pid)] = {
+        str(int(row.platform_season) + 1): float(row.actual_salary)
+        for row in grp.itertuples()
+    }
+
 # {season: {position: {stat: {mean, std}}}} -- same shape and method as the
 # current-season positionStats, just computed separately per historical
 # season so a player's history is scored against *that* season's peers.
@@ -322,6 +343,14 @@ def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map):
         # accomplishments" real arbitration panels credit beyond the stat
         # line, most recent first.
         "awards": awards_by_player.get(int(r.player_id), []),
+        # {season: actual salary paid} for the last 2 seasons this player had
+        # a real, resolved arb settlement -- powers the CBA's max-cut floor
+        # (can't drop more than 20% below last year's pay, 30% below two
+        # years ago). Missing entries just mean no resolved settlement exists
+        # for that season (a rare unresolved-at-publication tracker case, or
+        # the player wasn't arb-eligible yet) -- the frontend skips the floor
+        # rather than guessing.
+        "arbSalaryHistory": arb_salary_history_by_player.get(int(r.player_id), {}),
     }
 
 
