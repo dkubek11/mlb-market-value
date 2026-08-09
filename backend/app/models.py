@@ -227,3 +227,19 @@ class ArbOutcome(Base):
     actual_salary: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     source: Mapped[str] = mapped_column(String(20))
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PlayerAward(Base):
+    """Real major-league awards/honors per player-season, from the MLB Stats
+    API's own awards endpoint (MVP, Cy Young, Rookie of the Year, All-Star,
+    Silver Slugger, Gold Glove). Real arbitration panels explicitly credit
+    these as "special accomplishments" on top of the raw stat line -- this
+    table is what lets the dashboard do the same instead of only ever
+    comping off traditional stats."""
+
+    __tablename__ = "player_awards"
+
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.player_id"), primary_key=True)
+    season: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    award_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

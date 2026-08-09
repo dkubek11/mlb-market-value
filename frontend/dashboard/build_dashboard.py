@@ -216,6 +216,19 @@ hist_pitchers = pd.read_sql(
 )
 hist_batters["position"] = hist_batters["position"].map(lambda p: POS_MAP.get(p, p))
 
+print(f"[{season}] querying awards history...")
+AWARDS_Q = text("""
+    SELECT player_id, season, award_id FROM player_awards
+    WHERE season BETWEEN :start_season AND :end_season
+""")
+awards_df = pd.read_sql(AWARDS_Q, engine, params={"start_season": season - 5, "end_season": season})
+awards_by_player = {}
+for pid, grp in awards_df.groupby("player_id"):
+    awards_by_player[int(pid)] = [
+        {"season": int(row.season), "awardId": row.award_id}
+        for row in grp.sort_values("season", ascending=False).itertuples()
+    ]
+
 # {season: {position: {stat: {mean, std}}}} -- same shape and method as the
 # current-season positionStats, just computed separately per historical
 # season so a player's history is scored against *that* season's peers.
@@ -304,6 +317,11 @@ def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map):
         # Last 5 completed seasons the player qualified in (may be shorter or
         # empty for young players) -- no salary, see HISTORY_BATTER_Q comment.
         "history": history_map.get(int(r.player_id), []),
+        # Real MVP/Cy Young/ROY/All-Star/Silver Slugger/Gold Glove wins from
+        # the last 5 seasons (see mlb_awards.py) -- the "special
+        # accomplishments" real arbitration panels credit beyond the stat
+        # line, most recent first.
+        "awards": awards_by_player.get(int(r.player_id), []),
     }
 
 

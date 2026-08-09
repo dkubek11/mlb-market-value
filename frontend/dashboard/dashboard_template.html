@@ -1017,7 +1017,7 @@
         ? `<div class="card-value-note">Recommended pay: <strong>${fmtMoney(record.recommendedSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.paySurplus / 1e6)}M)</div>`
         : '';
       const arbNote = (isArbEligible(record) && record.expectedArbSalary != null)
-        ? `<div class="card-value-note">Arbitration-eligible — ${arbYearLabel(record)}. Comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-adjusted to ~${Math.round(arbServicePercent(record) * 100)}%: expected <strong>${fmtMoney(record.expectedArbSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.arbSurplus / 1e6)}M)</div>`
+        ? `<div class="card-value-note">Arbitration-eligible — ${arbYearLabel(record)}. Comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-adjusted to ~${Math.round(arbServicePercent(record) * 100)}%: expected <strong>${fmtMoney(record.expectedArbSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.arbSurplus / 1e6)}M).${accomplishmentsNote(record)}</div>`
         : '';
       valueHtml = `<div class="card-value-box">
         <div class="card-stat-label">Score</div>
@@ -1030,7 +1030,7 @@
       valueHtml = `<div class="card-value-box">
         <div class="card-stat-label">Projected Arbitration Value</div>
         <div class="card-projected">${fmtMoney(record.projectedSalary)}</div>
-        <div class="card-value-note">Comped against real Arb-1-tier peers on traditional stats (AVG/HR/RBI/wins/saves/etc.) — the stats an arbitration panel actually looks at, not advanced metrics. Assumes the standard track (~40%); Super Two eligibility (a 4th, earlier arb year) can't be predicted before a player actually reaches the tracker.</div>
+        <div class="card-value-note">Comped against real Arb-1-tier peers on traditional stats (AVG/HR/RBI/wins/saves/etc.) — the stats an arbitration panel actually looks at, not advanced metrics. Assumes the standard track (~40%); Super Two eligibility (a 4th, earlier arb year) can't be predicted before a player actually reaches the tracker.${accomplishmentsNote(record)}</div>
       </div>`;
     }
 
@@ -1050,7 +1050,7 @@
           <div class="card-value-box">
             <div class="card-stat-label">Projected Next-Season Arbitration Value</div>
             <div class="card-projected">${fmtMoney(record.projectedArbSalary)}</div>
-            <div class="card-value-note">Still under team control next season — comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-advanced to next year's expected arbitration tier. Based on this season's performance and track record, the same basis a real arbitration panel uses.${tierNote}</div>
+            <div class="card-value-note">Still under team control next season — comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-advanced to next year's expected arbitration tier. Based on this season's performance and track record, the same basis a real arbitration panel uses.${accomplishmentsNote(record)}${tierNote}</div>
           </div>`;
       }
     } else if (record.projectedPct != null && record.projectedMarketValue != null) {
@@ -1662,6 +1662,49 @@
   // projectedPct exactly as elsewhere, so this only changes which real
   // dollars get pulled in and how they're scaled, not how "similar
   // performance" is judged.
+  // Real arbitration panels weigh "special accomplishments" -- MVP/Cy Young/
+  // Rookie of the Year/All-Star/Silver Slugger/Gold Glove -- as an explicit
+  // CBA criterion on top of the stat line, not something a pure stat-line
+  // comp can ever capture. awards (from mlb_awards.py, real MLB Stats API
+  // data) is recency-weighted (a 3-year-old ROY still counts, just less than
+  // a fresh one) and capped at 15 percentile points so awards alone can't
+  // swing a case the way real performance does -- this only nudges a
+  // comp built on real stats, it doesn't replace it.
+  const AWARD_WEIGHTS = {
+    ALMVP: 5, NLMVP: 5,
+    ALCY: 5, NLCY: 5,
+    ALROY: 3, NLROY: 3,
+    ALSS: 2, NLSS: 2,
+    ALGG: 1.5, NLGG: 1.5,
+    ALAS: 1.5, NLAS: 1.5,
+  };
+  const ACCOMPLISHMENTS_CAP = 15;
+  function accomplishmentsCredit(p) {
+    const credit = (p.awards || []).reduce((sum, a) => {
+      const weight = AWARD_WEIGHTS[a.awardId] || 0;
+      const yearsAgo = Math.max(0, CURRENT_SEASON - a.season);
+      return sum + weight * Math.pow(0.75, yearsAgo);
+    }, 0);
+    return Math.min(ACCOMPLISHMENTS_CAP, credit * 3);
+  }
+  const AWARD_LABELS = {
+    ALMVP: 'AL MVP', NLMVP: 'NL MVP',
+    ALCY: 'AL Cy Young', NLCY: 'NL Cy Young',
+    ALROY: 'AL Rookie of the Year', NLROY: 'NL Rookie of the Year',
+    ALSS: 'AL Silver Slugger', NLSS: 'NL Silver Slugger',
+    ALGG: 'AL Gold Glove', NLGG: 'NL Gold Glove',
+    ALAS: 'AL All-Star', NLAS: 'NL All-Star',
+  };
+  function accomplishmentsNote(p) {
+    const credit = accomplishmentsCredit(p);
+    if (credit <= 0) return '';
+    const list = (p.awards || [])
+      .slice().sort((a, b) => b.season - a.season)
+      .map(a => `${a.season} ${AWARD_LABELS[a.awardId] || a.awardId}`)
+      .join(', ');
+    return ` Includes a +${credit.toFixed(1)}-percentile accomplishments credit (${list}).`;
+  }
+
   function directArbCompSalary(target, pool, targetTier, anchorPctOverride) {
     const blend = ARB_PROJECTION_BLEND;
     // Arb-eligible players' "track record" component is the 2 seasons
@@ -1679,6 +1722,7 @@
         ? (1 - blend) * target.arbMatchPct + blend * trackPct
         : target.arbMatchPct;
     }
+    anchorPct = Math.min(100, anchorPct + accomplishmentsCredit(target));
     const compPool = pool
       .filter(m => m !== target && m.aav != null)
       .map(m => ({ ...m, tierNormAav: m.aav * (targetTier / arbServicePercent(m)) }));

@@ -11,6 +11,7 @@ from app.models import (
     League,
     PitcherStats,
     Player,
+    PlayerAward,
     PlayerSalary,
     PlayerSeason,
     PlayerType,
@@ -22,6 +23,7 @@ from app.pipeline import (
     fangraphs_pitching,
     fangraphs_salary,
     fielding_metrics,
+    mlb_awards,
     mlb_stats_api,
     mlbtr_arbitration,
     statcast_extension,
@@ -436,9 +438,33 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
     else:
         ingested_salaries, skipped_salaries = 0, 0
 
+    print(f"[{season}] fetching MVP/Cy Young/ROY/All-Star/Silver Slugger/Gold Glove winners...")
+    try:
+        award_rows = mlb_awards.fetch_awards_for_season(season)
+    except Exception as exc:  # awards for an in-progress/future season aren't decided yet
+        print(f"  (awards unavailable for {season}: {exc})")
+        award_rows = []
+    known_player_ids = {pid for (pid,) in db.query(Player.player_id).all()}
+    ingested_awards = skipped_awards = 0
+    for row in award_rows:
+        if row["player_id"] not in known_player_ids:
+            skipped_awards += 1
+            continue
+        db.merge(
+            PlayerAward(
+                player_id=row["player_id"],
+                season=season,
+                award_id=row["award_id"],
+                scraped_at=now,
+            )
+        )
+        ingested_awards += 1
+    db.commit()
+
     print(
         f"[{season}] done. batters: {len(hitting_splits) - skipped_batters} "
         f"({skipped_batters} skipped), pitchers: {len(pitching_splits) - skipped_pitchers} "
         f"({skipped_pitchers} skipped), fielders: {len(fielding_player_ids) - skipped_fielders} "
-        f"({skipped_fielders} skipped), salaries: {ingested_salaries} ({skipped_salaries} skipped)"
+        f"({skipped_fielders} skipped), salaries: {ingested_salaries} ({skipped_salaries} skipped), "
+        f"awards: {ingested_awards} ({skipped_awards} skipped)"
     )
