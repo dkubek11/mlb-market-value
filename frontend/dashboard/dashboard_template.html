@@ -1641,11 +1641,28 @@
   }
 
   // Proximity-weighted median with an adaptively widening scale: starts at
-  // PROXIMITY_SCALE and widens (by PROXIMITY_SCALE_GROWTH each step) until
-  // the effective sample size clears MIN_EFFECTIVE_COMPS or the scale hits
-  // PROXIMITY_SCALE_MAX, whichever comes first.
+  // PROXIMITY_SCALE (tightened near the extreme top/bottom of the
+  // distribution -- see edgeFactor below) and widens (by
+  // PROXIMITY_SCALE_GROWTH each step) until the effective sample size
+  // clears MIN_EFFECTIVE_COMPS or the scale hits PROXIMITY_SCALE_MAX,
+  // whichever comes first.
+  //
+  // A fixed scale=8 treats "90th percentile" and "100th percentile" as
+  // near-neighbors, which is fine in the dense middle of a distribution but
+  // dilutes a genuine outlier at the edge: real peers get rarer the closer
+  // you get to 0 or 100, but the pool of "somewhat close" comps (10-15
+  // points off) usually gets bigger, not smaller, and at a gentle decay
+  // those numerous not-quite-peers can numerically outvote the handful of
+  // true peers. edgeFactor tightens the starting scale as anchorPct
+  // approaches either edge (down to half-width right at 0/100) so an
+  // outlier's median leans on its closest real comps first; the widening
+  // loop below still kicks in exactly as before if that tighter kernel
+  // doesn't find enough of them, so a genuinely thin edge still gets
+  // rescued rather than starved.
   function adaptiveCompMedian(pool, anchorPct, valueKey, pctKey = 'compPct') {
-    let scale = PROXIMITY_SCALE;
+    const edgeDistance = Math.min(anchorPct, 100 - anchorPct);
+    const edgeFactor = 0.5 + 0.5 * Math.min(1, edgeDistance / 50);
+    let scale = PROXIMITY_SCALE * edgeFactor;
     let weights;
     while (true) {
       weights = pool.map(m => Math.exp(-Math.abs(m[pctKey] - anchorPct) / scale));
