@@ -216,6 +216,23 @@ hist_pitchers = pd.read_sql(
 )
 hist_batters["position"] = hist_batters["position"].map(lambda p: POS_MAP.get(p, p))
 
+# Wider window (matches arb_outcomes' real coverage -- see
+# backfill_arb_outcomes.py -- 2016-2025 excluding the 60-game 2020 season)
+# used ONLY to build positionStatsHistory below, so computeHistoricalArbGrade
+# can grade a platform season all the way back to 2016, not just
+# hist_batters/hist_pitchers' 5-year card-display window above.
+ARB_STATS_SEASONS = [s for s in range(season - 10, season) if s != 2020]
+print(f"[{season}] querying {len(ARB_STATS_SEASONS)}-season position stats for arb grading "
+      f"({ARB_STATS_SEASONS[0]}-{ARB_STATS_SEASONS[-1]}, excl. 2020)...")
+arb_stats_hist_batters = pd.read_sql(
+    HISTORY_BATTER_Q, engine, params={"seasons": ARB_STATS_SEASONS, "min_pa": MIN_BATTER_PA}
+)
+arb_stats_hist_pitchers = pd.read_sql(
+    HISTORY_PITCHER_Q, engine,
+    params={"seasons": ARB_STATS_SEASONS, "min_ip_sp": MIN_IP_SP, "min_ip_rp": MIN_IP_RP},
+)
+arb_stats_hist_batters["position"] = arb_stats_hist_batters["position"].map(lambda p: POS_MAP.get(p, p))
+
 print(f"[{season}] querying awards history...")
 AWARDS_Q = text("""
     SELECT player_id, season, award_id FROM player_awards
@@ -276,9 +293,12 @@ print(f"[{season}] empirical arb raise floor (10th percentile of {len(raise_pair
 
 # {season: {position: {stat: {mean, std}}}} -- same shape and method as the
 # current-season positionStats, just computed separately per historical
-# season so a player's history is scored against *that* season's peers.
+# season (over the wider ARB_STATS_SEASONS window) so a player's history is
+# scored against *that* season's peers -- this is what lets
+# computeHistoricalArbGrade grade an arb_outcomes record from any season
+# 2016 onward, not just the 5 years hist_batters/hist_pitchers cover.
 positionStatsHistory = {}
-for season_key, season_grp in hist_batters.groupby("season"):
+for season_key, season_grp in arb_stats_hist_batters.groupby("season"):
     positionStatsHistory[str(season_key)] = {}
     for pos, grp in season_grp.groupby("position"):
         positionStatsHistory[str(season_key)][pos] = {}
@@ -288,7 +308,7 @@ for season_key, season_grp in hist_batters.groupby("season"):
                 {"mean": round(float(vals.mean()), 5), "std": round(float(vals.std()), 5)}
                 if len(vals) >= 2 else None
             )
-for season_key, season_grp in hist_pitchers.groupby("season"):
+for season_key, season_grp in arb_stats_hist_pitchers.groupby("season"):
     positionStatsHistory.setdefault(str(season_key), {})
     for pos, grp in season_grp.groupby("position"):
         positionStatsHistory[str(season_key)][pos] = {}

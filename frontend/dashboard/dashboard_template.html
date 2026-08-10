@@ -1054,15 +1054,18 @@
           : '';
         const floorNote = record.projectedArbFloored
           ? (record.projectedArbFloorIsEmpirical
-              ? ` This reflects a real-world floor, not a pure comp — returning arb players almost never see a cut (only ~3% of real year-over-year settlements do, and even the worst 10% still got at least a ${(ARB_RAISE_FLOOR_PCT * 100).toFixed(0)}% raise); the stat-based case alone would have landed lower.`
-              : ` This is the CBA's max-cut floor (can't fall below 80% of this year's real pay, or 70% of last year's), not a pure comp -- the stat-based case alone would have landed lower.`)
+              ? ` This reflects a real-world floor, not the comp above — returning arb players almost never see a cut (only ~3% of real year-over-year settlements do, and even the worst 10% still got at least a ${(ARB_RAISE_FLOOR_PCT * 100).toFixed(0)}% raise); the comp alone would have landed lower.`
+              : ` This is the CBA's max-cut floor (can't fall below 80% of this year's real pay, or 70% of last year's), not the comp above -- the comp alone would have landed lower.`)
           : '';
+        const baseNote = record.projectedArbRaisePct != null
+          ? `Still under team control next season — projects a <strong>${fmtSigned(record.projectedArbRaisePct * 100)}%</strong> change off this year's actual pay, matched against real arb-to-arb raises other players got at a similar performance level (2016-2025, excl. 2020), not a cross-year dollar comp.`
+          : `Still under team control next season — comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-advanced to next year's expected arbitration tier. Based on this season's performance and track record, the same basis a real arbitration panel uses.`;
         outlookHtml = `
           <div class="card-section-title">Next-Season Outlook</div>
           <div class="card-value-box">
             <div class="card-stat-label">Projected Next-Season Arbitration Value</div>
             <div class="card-projected">${fmtMoney(record.projectedArbSalary)}</div>
-            <div class="card-value-note">Still under team control next season — comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-advanced to next year's expected arbitration tier. Based on this season's performance and track record, the same basis a real arbitration panel uses.${accomplishmentsNote(record)}${floorNote}${tierNote}</div>
+            <div class="card-value-note">${baseNote}${accomplishmentsNote(record)}${floorNote}${tierNote}</div>
           </div>`;
       }
     } else if (record.projectedPct != null && record.projectedMarketValue != null) {
@@ -1975,6 +1978,37 @@
       });
     });
 
+    // Real year-over-year raise %, matched by performance -- built by pairing
+    // the same historicalArbOutcomes records across consecutive platform
+    // seasons for the same player (2016-2025 excl. 2020; see
+    // backfill_arb_outcomes.py). projectedArbSalary applies this directly to
+    // a player's own actual current pay instead of comping dollar figures
+    // across years: "a similar player got X% more" sidesteps guessing at
+    // cross-year inflation entirely, since both sides of that fraction are
+    // already in that specific player's own real dollars.
+    const outcomesByPlayer = {};
+    historicalArbOutcomes.forEach(r => {
+      if (r.actualSalary == null) return;
+      (outcomesByPlayer[r.playerId] = outcomesByPlayer[r.playerId] || []).push(r);
+    });
+    const raisePairsByBucket = { batter: [], SP: [], RP: [] };
+    Object.values(outcomesByPlayer).forEach(records => {
+      const bySeasonNum = {};
+      records.forEach(r => { bySeasonNum[r.season] = r; });
+      records.forEach(r => {
+        const next = bySeasonNum[r.season + 1];
+        if (!next) return;
+        const arbPct = computeHistoricalArbGrade(r, r.isBatter);
+        if (arbPct == null) return;
+        const bucket = r.isBatter ? 'batter' : r.position;
+        if (!raisePairsByBucket[bucket]) return;
+        raisePairsByBucket[bucket].push({
+          arbMatchPct: arbPct,
+          raisePct: (next.actualSalary - r.actualSalary) / r.actualSalary,
+        });
+      });
+    });
+
     Object.values(byPos).forEach(group => {
       const marketGroup = group.filter(p => !p.isPreArb);
       const bySalary = [...marketGroup].sort((a, b) => a.aav - b.aav);
@@ -2087,7 +2121,28 @@
         const forwardAnchor = p.arbHistoryPct != null
           ? (1 - blend) * p.arbCompPct + blend * p.arbHistoryPct
           : p.arbCompPct;
-        const compBased = directArbCompSalary(p, pool, nextTier, forwardAnchor);
+        const dollarCompBased = directArbCompSalary(p, pool, nextTier, forwardAnchor);
+
+        // For anyone already on a real arb salary, prefer a performance-
+        // matched raise % (from raisePairsByBucket above) applied to their
+        // OWN actual pay, over comping dollar figures across tiers/years:
+        // both sides of a raise fraction are already in this specific
+        // player's own real dollars, so it sidesteps guessing at cross-year
+        // inflation the way the dollar comp has to. Pre-arb players have no
+        // real prior arb salary to apply a raise to, so they stay on the
+        // dollar comp. Falls back to the dollar comp if the bucket's raise
+        // pool is somehow empty.
+        let compBased = dollarCompBased;
+        let raisePctUsed = null;
+        if (isArbEligible(p)) {
+          const raisePool = raisePairsByBucket[poolFor(p)];
+          raisePctUsed = raisePool.length > 0
+            ? adaptiveCompMedian(raisePool, forwardAnchor, 'raisePct', 'arbMatchPct')
+            : null;
+          if (raisePctUsed != null) compBased = p.aav * (1 + raisePctUsed);
+        }
+        p.projectedArbRaisePct = raisePctUsed;
+
         // Two floors against NEXT season: the legal one (80% of this year's
         // real aav, 70% of last year's real settlement), and the empirical
         // one (ARB_RAISE_FLOOR_PCT -- what a real returning arb player

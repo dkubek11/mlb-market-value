@@ -1,3 +1,4 @@
+import html
 import re
 
 import requests
@@ -103,3 +104,55 @@ def fetch_historical_outcomes(season: int) -> list[dict]:
         {"name": name.strip(), "service_time": float(svc), "salary": _parse_dollar(outcome)}
         for name, svc, outcome in _HISTORICAL_ENTRY_RE.findall(resp.text)
     ]
+
+
+# A second, much cleaner historical source: MLBTR's transactions subdomain
+# serves a real HTML table of arbitration submissions/settlements per season,
+# no prose parsing needed. Critically, the year in this URL is the PLATFORM
+# season directly (not settlement year minus one like TRACKER_URL above) --
+# verified against real, well-known settlements: /2019 lists Cody Bellinger
+# at $11.5MM, linking to MLBTR's "2020/01" article announcing his real 2020
+# salary, decided off his 2019 MVP season. Only populated for roughly
+# 2011-2021 as of 2026; 2022 onward returns an empty table (MLBTR appears to
+# have stopped maintaining this particular widget after the 2021-22 lockout,
+# same gap TRACKER_URL has for that year), so this doesn't cover recent
+# seasons -- use fetch_historical_outcomes for those instead.
+WIDGET_URL = "https://transactions.mlbtraderumors.com/widget/arbitration-submissions/{platform_season}"
+_WIDGET_ROW_RE = re.compile(r'<tr class="row">(.*?)</tr>', re.DOTALL)
+_WIDGET_CELL_RE = re.compile(r"<td[^>]*>(.*?)</td>", re.DOTALL)
+_WIDGET_TAG_RE = re.compile(r"<[^>]+>")
+_WIDGET_SERVICE_RE = re.compile(r"([\d.]+)")
+
+
+def fetch_widget_outcomes(platform_season: int) -> list[dict]:
+    """Returns [{name, service_time, salary}] for a past platform season from
+    the transactions-widget table. salary is None for rows with no settled
+    amount yet (an unresolved/hearing case, or predicted-only figures)."""
+    resp = requests.get(
+        WIDGET_URL.format(platform_season=platform_season), timeout=30, headers={"User-Agent": "Mozilla/5.0"}
+    )
+    resp.raise_for_status()
+    resp.encoding = "utf-8"
+
+    outcomes = []
+    for row_html in _WIDGET_ROW_RE.findall(resp.text):
+        cells = _WIDGET_CELL_RE.findall(row_html)
+        if len(cells) < 7:
+            continue
+        # Some names carry a trailing HTML-entity-encoded dagger/double-dagger
+        # footnote marker (e.g. "Brad Brach &dagger;") that must be decoded
+        # before it can be stripped, or it silently breaks name matching.
+        name = html.unescape(_WIDGET_TAG_RE.sub("", cells[0])).strip()
+        name = re.sub(r"[†‡]\s*$", "", name).strip()
+        service_match = _WIDGET_SERVICE_RE.search(cells[2])
+        if not name or not service_match:
+            continue
+        settled_text = _WIDGET_TAG_RE.sub("", cells[6]).strip()
+        dollar_match = _DOLLAR_RE.search(settled_text)
+        salary = None
+        if dollar_match:
+            amount = float(dollar_match.group(1).replace(",", ""))
+            unit = dollar_match.group(2)
+            salary = amount * (1_000_000 if unit in ("MM", "M") else 1_000)
+        outcomes.append({"name": name, "service_time": float(service_match.group(1)), "salary": salary})
+    return outcomes
