@@ -1044,7 +1044,16 @@
     let outlookHtml = '';
     const teamControlled = record.isPreArb || isArbEligible(record);
     const pendingFA = isNearingFreeAgency(record);
-    if (teamControlled && !pendingFA) {
+    // A rookie with, say, 0.128 years of service isn't one tier away from
+    // arbitration next season -- they're still years away (Super Two's
+    // earliest real cutoff is ~2.0 years; standard arb needs 3.0). Showing
+    // an "arbitration value" for a season the player legally can't be in
+    // arbitration for is actively misleading, not just imprecise -- the
+    // existing "Projected Arbitration Value" box above already covers
+    // "whenever they eventually reach Arb-1" for every pre-arb player, so
+    // there's nothing new to say here until that's plausibly close.
+    const arbPlausibleNextSeason = isArbEligible(record) || (record.serviceYears || 0) + 1 >= 2.0;
+    if (teamControlled && !pendingFA && arbPlausibleNextSeason) {
       // Still team-controlled and not reaching free agency next season --
       // show what arbitration/pre-arb pay actually looks like one tier out,
       // not an open-market figure this player can't legally be paid yet.
@@ -1068,7 +1077,12 @@
             <div class="card-value-note">${baseNote}${accomplishmentsNote(record)}${floorNote}${tierNote}</div>
           </div>`;
       }
-    } else if (record.projectedPct != null && record.projectedMarketValue != null) {
+    } else if ((!teamControlled || pendingFA) && record.projectedPct != null && record.projectedMarketValue != null) {
+      // Only reachable for players not under arb-relevant team control (or
+      // actually reaching free agency) -- a rookie who's merely too far
+      // from arbitration to plausibly project (arbPlausibleNextSeason
+      // false above) falls through to no Outlook section at all, not this
+      // open-market branch; they can't legally be paid a market rate yet.
       // The service-time branch of isNearingFreeAgency (team-controlled
       // players) can be wrong when serviceYears is the debut-year proxy
       // rather than a real accrued figure -- surface that the same way the
