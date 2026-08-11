@@ -85,6 +85,7 @@
     color: var(--ink-dim); font-size: 12.5px; margin: 10px 0 28px;
     font-family: "Courier Prime", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
   }
+  .snapshot-note.stale { color: var(--bad); font-weight: 600; }
 
   .kpis {
     display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 28px;
@@ -689,8 +690,21 @@
     return allPlayers.find(p => p.id === id && p.position === position);
   }
 
-  document.getElementById('snapshot-note').textContent =
-    `Snapshot of 2026 season data · ${marketCount} market-priced players + ${preArbCount} pre-arb/MiLB prospects (min. 150 PA / 50 IP) across ${teams.length} teams · captured ${DATA.capturedAt}`;
+  // Surfaces a silently-broken nightly refresh (the actual failure mode
+  // this caught in practice: the Windows Task Scheduler job missed several
+  // nights in a row with no visible symptom other than an old timestamp)
+  // right on the page, instead of only being discoverable by checking logs.
+  // 36h rather than 24h so one legitimately-missed night (e.g. a single
+  // unplugged evening) doesn't cry wolf -- two in a row should.
+  const STALE_THRESHOLD_HOURS = 36;
+  const capturedDate = new Date(DATA.capturedAt.replace(' UTC', 'Z').replace(' ', 'T'));
+  const hoursOld = (Date.now() - capturedDate.getTime()) / 3600000;
+  const isStale = Number.isFinite(hoursOld) && hoursOld > STALE_THRESHOLD_HOURS;
+  const snapshotNoteEl = document.getElementById('snapshot-note');
+  snapshotNoteEl.textContent =
+    `Snapshot of 2026 season data · ${marketCount} market-priced players + ${preArbCount} pre-arb/MiLB prospects (min. 150 PA / 50 IP) across ${teams.length} teams · captured ${DATA.capturedAt}` +
+    (isStale ? ` ⚠ DATA IS ${Math.round(hoursOld)}H OLD -- nightly refresh may have failed` : '');
+  snapshotNoteEl.classList.toggle('stale', isStale);
 
   function fmtMoney(n) {
     if (n == null) return '—';
