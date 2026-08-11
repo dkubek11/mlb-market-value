@@ -476,7 +476,7 @@
       </button>
       <button class="nav-item" data-tab="rookies">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8" /><path d="M15 7h6v6" /></svg>
-        <span>Rookies</span>
+        <span>Pre-Arbitration</span>
       </button>
       <button class="nav-item" data-tab="teams">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 9-9 9-9-9z" /></svg>
@@ -514,7 +514,7 @@
       </div>
       <div class="preview-card">
         <div class="preview-head">
-          <h3>Biggest rookie bargains <span class="preview-sub">projected vs. actual</span></h3>
+          <h3>Biggest pre-arb bargains <span class="preview-sub">projected vs. actual</span></h3>
           <button class="preview-link" data-tab="rookies">See all →</button>
         </div>
         <div id="preview-rookies"></div>
@@ -531,7 +531,7 @@
     <div class="method">
       <strong>How to read this:</strong> Score = performance percentile − (Pay weight × salary percentile), computed within same position and season. Positive means outperforming their pay grade (underpaid); negative means overpaid relative to position peers. Performance percentile comes from a weighted composite — 12 stats for batters (xwOBA, xBA, xSLG, Barrel%, Hard-Hit%, Chase%, Whiff%, K%, BB%, OAA, FRV, DRS), 13 for pitchers (xERA, xBA/Avg Exit Velo/Hard-Hit%/Barrel% Allowed, K%, BB%, Chase%/Whiff%/Z-Swing% Induced, Extension, Stuff+, Location+) — each stat scored as a z-score against the position average. Adjust any weight, including Pay, in the <strong>Weights</strong> tab and every score, grade, and salary projection on the site recomputes instantly. Minimum sample: 150 PA for batters, 50 IP for pitchers.
       <br /><br />
-      <strong>Pre-arbitration players skip the pay adjustment</strong> — by CBA rule they're paid at or near the league minimum almost regardless of performance, so weighing their salary would just penalize them for a number they don't control. Their Score is pure performance percentile, and they're broken out in the <strong>Rookies</strong> tab with a projected market salary based on comparable-performing market-priced peers (Arbitration, Extension, or Free Agent deals) at their position.
+      <strong>Pre-arbitration players skip the pay adjustment</strong> — by CBA rule they're paid at or near the league minimum almost regardless of performance, so weighing their salary would just penalize them for a number they don't control. Their Score is pure performance percentile, and they're broken out in the <strong>Pre-Arbitration</strong> tab with a projected market salary based on comparable-performing market-priced peers (Arbitration, Extension, or Free Agent deals) at their position.
       <br /><br />
       <strong>▲/▼ arrows</strong> next to a player's name (and on their card) flag a gap between their actual AVG/ERA this season and a projected true-talent level, blending two independent signals: a Marcel-style projection (their own last 3 seasons of expected stats, regressed to the league mean by sample size and adjusted for age) and a comparable-player projection (historical players — 2015&ndash;2024 — who were at the same age with a similar recent performance level and trend, weighted by how those comps actually performed the following season). Both are real, established statistical techniques, not black-box models. Green ▲ means they're underperforming that projection and due for positive regression; red ▼ means they're running ahead of it and likely to cool off. For pre-arb players, this projection also nudges their projected salary so a small-sample hot or cold streak doesn't fully drive the number.
     </div>
@@ -608,7 +608,7 @@
   <div id="custom-view" style="display:none">
     <div class="custom-intro">
       <h2>Weights</h2>
-      <p>These weights are the site's single source of truth &mdash; every score, grade, and projected salary on Home, Players, Rookies, Teams, and the player card is computed live from them. Each stat is measured as a <strong>z-score</strong> against the position average, multiplied by its weight, and summed into a raw performance subtotal. That subtotal is converted to a percentile within the position, then <strong>Pay</strong> below blends in how well-paid the player is: <code>Score = performance percentile − (Pay weight × salary percentile)</code>. Pre-arbitration players are paid near the league minimum by rule, so they skip the pay adjustment entirely and their Score is just their performance percentile.</p>
+      <p>These weights are the site's single source of truth &mdash; every score, grade, and projected salary on Home, Players, Pre-Arbitration, Teams, and the player card is computed live from them. Each stat is measured as a <strong>z-score</strong> against the position average, multiplied by its weight, and summed into a raw performance subtotal. That subtotal is converted to a percentile within the position, then <strong>Pay</strong> below blends in how well-paid the player is: <code>Score = performance percentile − (Pay weight × salary percentile)</code>. Pre-arbitration players are paid near the league minimum by rule, so they skip the pay adjustment entirely and their Score is just their performance percentile.</p>
     </div>
 
     <div class="weight-group">
@@ -1172,7 +1172,7 @@
         <div class="kpi"><div class="kpi-label">Market-priced players</div><div class="kpi-value truncate">${marketCount}</div><div class="kpi-sub">${teams.length} teams tracked</div></div>
         <div class="kpi"><div class="kpi-label">Total payroll (tracked)</div><div class="kpi-value truncate">${fmtMoney(totalPayroll)}</div><div class="kpi-sub">sum of scraped contracts</div></div>
         <div class="kpi"><div class="kpi-label">Best score</div><div class="kpi-value truncate">${best.name}</div><div class="kpi-sub">${best.team} ${best.position} · ${fmtSigned(best.score)}</div></div>
-        <div class="kpi"><div class="kpi-label">Biggest rookie bargain</div><div class="kpi-value truncate">${biggestBargain.name}</div><div class="kpi-sub">${biggestBargain.team} ${biggestBargain.position} · +${fmtMoney(biggestBargain.surplus)} proj.</div></div>
+        <div class="kpi"><div class="kpi-label">Biggest pre-arb bargain</div><div class="kpi-value truncate">${biggestBargain.name}</div><div class="kpi-sub">${biggestBargain.team} ${biggestBargain.position} · +${fmtMoney(biggestBargain.surplus)} proj.</div></div>
       </div>
     `;
 
@@ -1183,7 +1183,7 @@
         teaser: `Best score: ${best.name} (${best.team} ${best.position}) → ${fmtSigned(best.score)}`,
       },
       {
-        tab: 'rookies', icon: ICON_ROOKIES, title: 'Rookies',
+        tab: 'rookies', icon: ICON_ROOKIES, title: 'Pre-Arbitration',
         desc: 'Pre-arbitration players are paid near the league minimum by rule, not by performance — so they get a projected market salary instead of a value score.',
         teaser: `Biggest bargain: ${biggestBargain.name} (${biggestBargain.team}) → +${fmtMoney(biggestBargain.surplus)} proj.`,
       },
