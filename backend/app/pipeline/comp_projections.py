@@ -2,11 +2,12 @@
 
 Complements the Marcel-style regression in projections.py with a genuinely
 different signal: instead of only regressing a player's own history toward
-the mean, find historical players (2015-2024) who were at a similar age with
-a similar recent performance level and short-term trend across the same stat
-set, then look at what THOSE players actually did the following season. This
-is a simplified version of the idea behind PECOTA's comparable-player
-projections.
+the mean, find historical players (2015 through two seasons before whichever
+season is being projected -- see last_comp_anchor_season in _compute) who
+were at a similar age with a similar recent performance level and short-term
+trend across the same stat set, then look at what THOSE players actually did
+the following season. This is a simplified version of the idea behind
+PECOTA's comparable-player projections.
 
 Comp search happens on position-and-season-relative z-scores (so a .280 xBA
 catcher and a .280 xBA shortstop aren't treated as "the same" just because
@@ -39,7 +40,6 @@ PITCHER_SIMILARITY_WEIGHTS = {
 
 K_COMPS = 20
 MAX_AGE_DIFF = 1.5
-LAST_COMP_ANCHOR_SEASON = 2024  # needs a known "next season" (2025) to be usable as a comp
 
 _BATTER_ALL_SEASONS_QUERY = text(
     """
@@ -120,6 +120,7 @@ def _project_one(
     next_lookup: pd.DataFrame,
     stat_cols: list[str],
     weights: dict[str, float],
+    last_comp_anchor_season: int,
 ) -> dict | None:
     if target_row is None or pd.isna(target_row.get("age")):
         return None
@@ -128,7 +129,7 @@ def _project_one(
         (fingerprints["position"] == target_row["position"])
         & fingerprints["age"].notna()
         & ((fingerprints["age"] - target_row["age"]).abs() <= MAX_AGE_DIFF)
-        & (fingerprints["season"] <= LAST_COMP_ANCHOR_SEASON)
+        & (fingerprints["season"] <= last_comp_anchor_season)
         & (fingerprints["player_id"] != target_row["player_id"])
     ]
     if pool.empty:
@@ -175,10 +176,18 @@ def _compute(all_seasons_query, current_season: int, stat_cols: list[str], weigh
     fingerprints = _build_fingerprints(zdf, stat_cols)
     next_lookup = _next_season_lookup(df, stat_cols)
 
+    # A comp source season S is only usable once its real "next season" (S+1)
+    # is a completed season -- the newest completed season is current_season-1
+    # (the same season targets are anchored on), so S+1 <= current_season-1,
+    # i.e. S <= current_season-2. This used to be a hardcoded constant that
+    # would silently go a year stale every season unless someone remembered
+    # to bump it by hand.
+    last_comp_anchor_season = current_season - 2
+
     targets = fingerprints[fingerprints["season"] == current_season - 1]
     results: dict[int, dict] = {}
     for _, row in targets.iterrows():
-        proj = _project_one(row, fingerprints, next_lookup, stat_cols, weights)
+        proj = _project_one(row, fingerprints, next_lookup, stat_cols, weights, last_comp_anchor_season)
         if proj is not None:
             results[int(row["player_id"])] = proj
     return results
