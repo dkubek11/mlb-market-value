@@ -18,6 +18,7 @@
 $RepoRoot = "C:\Users\dylan\Desktop\mlb-market-value"
 $Backend = Join-Path $RepoRoot "backend"
 $Dashboard = Join-Path $RepoRoot "frontend\dashboard"
+$Validate = Join-Path $RepoRoot "scripts\validate"
 $LogDir = Join-Path $RepoRoot "scripts\logs"
 $Season = 2026
 
@@ -42,6 +43,19 @@ Run-Step $Backend "py" @("-m", "app.pipeline.run_ingest", "--season", $Season) "
 Run-Step $Backend "py" @("-m", "app.pipeline.run_compute_value", "--season", $Season) "run_compute_value.py"
 Run-Step $Dashboard "py" @("build_dashboard.py", $Season) "build_dashboard.py"
 Run-Step $Dashboard "py" @("splice_dashboard.py") "splice_dashboard.py"
+
+# Loads the just-built dashboard_final.html in a real (headless) browser and
+# runs the same NaN/coverage/no-cuts/card-render checks that used to require
+# manually opening a browser and inspecting allPlayers by hand -- catches a
+# computation bug (like the NaN-weight bug that once collapsed every pre-arb
+# player onto the same $90.8M comp) automatically, not just a data-pipeline
+# failure. Note this runs *after* splice_dashboard.py has already overwritten
+# dashboard_final.html, so a failed validation means that bad build is what's
+# sitting on disk, not the previous good one -- it never reaches the live
+# Claude Artifact link though, since publishing that is a separate, manual
+# step. A failure here triggers the task's RestartCount retry, same as any
+# other step failing.
+Run-Step $Validate "node" @("validate_dashboard.js") "validate_dashboard.js"
 
 Write-Output "=== Nightly refresh completed successfully ==="
 Stop-Transcript | Out-Null
