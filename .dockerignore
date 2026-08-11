@@ -1,0 +1,25 @@
+# Version control
+.git
+.gitignore
+.claude
+
+# Python caches / envs
+__pycache__
+*.pyc
+.venv
+venv
+backend/.venv
+
+# Environment secrets (never build into the image)
+.env
+backend/.env
+
+# Plans / docs
+plans
+*.md
+
+# OS / editor
+.DS_Store
+.idea
+.vscode
+*.log

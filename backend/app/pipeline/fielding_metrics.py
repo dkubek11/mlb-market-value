@@ -27,20 +27,24 @@ def fetch_oaa_frv(season: int) -> dict[int, dict]:
 def fetch_drs(season: int) -> dict[int, dict]:
     """Defensive Runs Saved, from FanGraphs. Returns one row per position played,
     so multi-position players are summed into a single player-season DRS total."""
-    resp = requests.get(
-        FANGRAPHS_FIELDING_API,
-        params={
-            "pos": "all",
-            "stats": "fld",
-            "lg": "all",
-            "qual": 0,
-            "season": season,
-            "season1": season,
-            "pageitems": 5000,
-        },
-        timeout=30,
-    )
-    resp.raise_for_status()
+    try:
+        resp = requests.get(
+            FANGRAPHS_FIELDING_API,
+            params={
+                "pos": "all",
+                "stats": "fld",
+                "lg": "all",
+                "qual": 0,
+                "season": season,
+                "season1": season,
+                "pageitems": 5000,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001 -- scrape is best-effort (403/IP blocks etc.)
+        print(f"WARNING: FanGraphs DRS fetch failed ({exc!r}); continuing without DRS")
+        return {}
 
     result: dict[int, dict] = {}
     for row in resp.json()["data"]:

@@ -189,8 +189,18 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
     print(f"[{season}] fetching Statcast advanced metrics...")
     batter_advanced = statcast_metrics.fetch_batter_advanced(season)
     pitcher_advanced = statcast_metrics.fetch_pitcher_advanced(season)
-    plate_discipline = fangraphs_batting.fetch_plate_discipline(season)
-    pitcher_discipline = fangraphs_pitching.fetch_plate_discipline(season)
+    # FanGraphs plate-discipline is an enhancement stat scraped without an API
+    # key; some networks/IPs get 403'd, which shouldn't abort the whole season.
+    try:
+        plate_discipline = fangraphs_batting.fetch_plate_discipline(season)
+    except Exception as exc:
+        print(f"WARNING: FanGraphs batter plate-discipline fetch failed ({exc!r}); continuing without it")
+        plate_discipline = {}
+    try:
+        pitcher_discipline = fangraphs_pitching.fetch_plate_discipline(season)
+    except Exception as exc:
+        print(f"WARNING: FanGraphs pitcher plate-discipline fetch failed ({exc!r}); continuing without it")
+        pitcher_discipline = {}
     print(f"[{season}] fetching pitch-by-pitch Statcast data for release extension...")
     pitcher_extension = statcast_extension.fetch_extension(season)
 
@@ -355,9 +365,21 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
 
     if include_salary:
         print(f"[{season}] fetching salaries from FanGraphs RosterResource...")
-        teams = mlb_stats_api.fetch_teams(season)
-        abbreviation_to_team_id = {t["abbreviation"]: t["team_id"] for t in teams}
-        salary_rows = fangraphs_salary.fetch_all_salaries(season)
+        try:
+            teams = mlb_stats_api.fetch_teams(season)
+            abbreviation_to_team_id = {t["abbreviation"]: t["team_id"] for t in teams}
+            salary_rows = fangraphs_salary.fetch_all_salaries(season)
+        except Exception as exc:  # noqa: BLE001 -- live scrape is best-effort
+            # Stats/advanced metrics above are already committed; don't throw
+            # them away just because the live salary scrape failed (network
+            # down, FanGraphs blocking, rate-limited). The dashboard can still
+            # render and value/payroll compute will just have no salary data
+            # for this season (same effect as --skip-salary).
+            print(
+                f"WARNING: salary fetch failed for {season} ({exc!r}); "
+                "continuing without salaries (stats are already committed)"
+            )
+            salary_rows = []
 
         salary_player_ids = {r["player_id"] for r in salary_rows}
         new_player_ids = salary_player_ids - all_player_ids

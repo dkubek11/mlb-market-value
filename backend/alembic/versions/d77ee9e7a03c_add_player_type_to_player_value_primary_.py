@@ -20,22 +20,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column(
-        'player_value',
-        sa.Column(
-            'player_type',
-            sa.Enum('BATTER', 'PITCHER', name='player_type_enum'),
-            nullable=False,
-        ),
-    )
-    op.drop_constraint('player_value_pkey', 'player_value', type_='primary')
-    op.create_primary_key(
-        'player_value_pkey', 'player_value', ['player_id', 'season', 'player_type']
-    )
+    with op.batch_alter_table('player_value', schema=None) as batch_op:
+        batch_op.add_column(
+            sa.Column(
+                'player_type',
+                sa.Enum('BATTER', 'PITCHER', name='player_type_enum'),
+                nullable=False,
+            )
+        )
+        batch_op.drop_constraint('player_value_pkey', type_='primary')
+        batch_op.create_primary_key(
+            'player_value_pkey', ['player_id', 'season', 'player_type']
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_constraint('player_value_pkey', 'player_value', type_='primary')
-    op.create_primary_key('player_value_pkey', 'player_value', ['player_id', 'season'])
-    op.drop_column('player_value', 'player_type')
+    with op.batch_alter_table('player_value', schema=None) as batch_op:
+        batch_op.drop_constraint('player_value_pkey', type_='primary')
+        batch_op.create_primary_key('player_value_pkey', ['player_id', 'season'])
+        batch_op.drop_column('player_type')

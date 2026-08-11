@@ -10,20 +10,24 @@ FANGRAPHS_BATTING_API = "https://www.fangraphs.com/api/leaders/major-league/data
 
 
 def fetch_plate_discipline(season: int) -> dict[int, dict]:
-    resp = requests.get(
-        FANGRAPHS_BATTING_API,
-        params={
-            "pos": "all",
-            "stats": "bat",
-            "lg": "all",
-            "qual": 0,
-            "season": season,
-            "season1": season,
-            "pageitems": 5000,
-        },
-        timeout=30,
-    )
-    resp.raise_for_status()
+    try:
+        resp = requests.get(
+            FANGRAPHS_BATTING_API,
+            params={
+                "pos": "all",
+                "stats": "bat",
+                "lg": "all",
+                "qual": 0,
+                "season": season,
+                "season1": season,
+                "pageitems": 5000,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001 -- scrape is best-effort (403/IP blocks etc.)
+        print(f"WARNING: FanGraphs batting plate-discipline fetch failed ({exc!r}); continuing without it")
+        return {}
 
     result: dict[int, dict] = {}
     for row in resp.json()["data"]:

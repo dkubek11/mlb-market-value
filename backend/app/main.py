@@ -1,10 +1,24 @@
+import datetime
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, Query
+from fastapi.responses import FileResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 
 app = FastAPI(title="MLB Market Value API")
+
+# The dashboard template is a plain static file; data is fetched live from
+# /api/dashboard at page load (see dashboard_template.html). Serve it at / so
+# a single container exposes both the API and the dashboard.
+_DASHBOARD_TEMPLATE = (
+    Path(__file__).resolve().parent.parent.parent
+    / "frontend"
+    / "dashboard"
+    / "dashboard_template.html"
+)
 
 # position_enum stores "FIRST_BASE"/"SECOND_BASE"/"THIRD_BASE" as the literal
 # DB value (a bare "1B" isn't a valid Postgres enum label), but every other
@@ -30,6 +44,29 @@ def _to_api_position(row: dict) -> dict:
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/", include_in_schema=False)
+def dashboard():
+    """Serve the dashboard template at the root. Data is fetched live by the
+    browser from /api/dashboard at page load, so no build step is needed and
+    edits to dashboard_template.html are reflected on refresh."""
+    if _DASHBOARD_TEMPLATE.exists():
+        return FileResponse(_DASHBOARD_TEMPLATE)
+    return {"error": "dashboard_template.html not found — the frontend must be present next to the backend."}
+
+
+@app.get("/api/dashboard")
+def api_dashboard(
+    season: int = Query(default=datetime.date.today().year),
+    fetch_live_contracts: bool = Query(default=True),
+):
+    """Return the full dashboard data payload (players, projections, teams,
+    rosters, contracts) computed live from the database. This is what the
+    browser fetches at page load."""
+    from app.dashboard_data import build_dashboard_payload
+
+    return build_dashboard_payload(season, fetch_live_contracts=fetch_live_contracts)
 
 
 @app.get("/players/value")

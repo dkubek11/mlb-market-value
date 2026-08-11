@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -29,7 +30,18 @@ NON_MARKET_PREFIXES = ("Pre-Arbitration", "MiLB")
 
 
 def _is_pre_arb(contract_type: str | None) -> bool:
-    return contract_type is not None and contract_type.startswith(NON_MARKET_PREFIXES)
+    # pandas (esp. with pyarrow-backed dtypes in pandas 3.x) surfaces SQL NULL
+    # as float('nan') rather than None in a str column -- e.g. for seasons
+    # ingested with --skip-salary, where player_salaries has no rows and the
+    # LEFT JOIN yields NULL contract_type. NaN is not a pre-arb marker.
+    if contract_type is None:
+        return False
+    try:
+        if isinstance(contract_type, float) and math.isnan(contract_type):
+            return False
+    except TypeError:
+        pass
+    return contract_type.startswith(NON_MARKET_PREFIXES)
 
 
 # Minimum number of comparable-performance market-priced peers required for a
@@ -44,7 +56,7 @@ _BATTER_QUERY = text(
     FROM batter_stats bs
     JOIN player_seasons ps
         ON ps.player_id = bs.player_id AND ps.season = bs.season AND ps.player_type = 'BATTER'
-    JOIN player_salaries sal ON sal.player_id = bs.player_id AND sal.season = bs.season
+    LEFT JOIN player_salaries sal ON sal.player_id = bs.player_id AND sal.season = bs.season
     WHERE bs.season = :season AND bs.pa >= :min_pa AND bs.xwoba IS NOT NULL
     """
 )
@@ -55,7 +67,7 @@ _PITCHER_QUERY = text(
     FROM pitcher_stats ps_stats
     JOIN player_seasons ps
         ON ps.player_id = ps_stats.player_id AND ps.season = ps_stats.season AND ps.player_type = 'PITCHER'
-    JOIN player_salaries sal ON sal.player_id = ps_stats.player_id AND sal.season = ps_stats.season
+    LEFT JOIN player_salaries sal ON sal.player_id = ps_stats.player_id AND sal.season = ps_stats.season
     WHERE ps_stats.season = :season AND ps_stats.fip IS NOT NULL
       AND (
         (ps.position = 'SP' AND ps_stats.ip >= :min_ip_sp) OR
@@ -127,6 +139,16 @@ def _compute_group(df: pd.DataFrame, stat_col: str, higher_is_better: bool) -> p
     is_pre_arb = df["contract_type"].apply(_is_pre_arb)
     market = df[~is_pre_arb].copy()
     pre_arb = df[is_pre_arb].copy()
+
+    if market.empty or market["salary"].notna().sum() == 0:
+        # No market-priced salaries for this season (e.g. a --skip-salary
+        # historical backfill, or a season where the live salary scrape
+        # failed). There's no pay signal to compare against, so every player
+        # gets a performance percentile but no value_score / salary percentile.
+        # Treat the whole frame like the pre-arb case: pay-based fields NULL.
+        for col in ("salary_percentile", "value_score", "projected_salary"):
+            df[col] = None
+        return df
 
     market["salary_percentile"] = market.groupby("position")["salary"].rank(pct=True) * 100
     market["value_score"] = market["composite_percentile"] - market["salary_percentile"]

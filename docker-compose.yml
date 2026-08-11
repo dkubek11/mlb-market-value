@@ -1,0 +1,86 @@
+# MLB Market Value — containerized stack.
+#
+#   docker compose up -d --build
+#
+# Brings up:
+#   - db   : PostgreSQL 16 with a persistent named volume
+#   - api  : FastAPI serving the API (port 8000) AND the dashboard at /
+#
+# After up:  http://localhost:8000/        -> dashboard
+#            http://localhost:8000/docs    -> API docs
+#
+# The dashboard is a plain static file (dashboard_template.html). The browser
+# fetches the data live from GET /api/dashboard at page load, so there is no
+# build step and HTML edits are picked up on refresh. The bind mount below
+# makes frontend/dashboard on the host the live source inside the container, so
+# you can edit the template and just refresh -- no image rebuild required for
+# HTML/JS/CSS changes.
+name: mlb-market-value
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mlb-mv-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mlb_market_value
+    volumes:
+      - mlb_mv_pgdata:/var/lib/postgresql/data
+    # Host port 5432 is occupied by a system Postgres; the API talks to `db`
+    # over the internal network anyway, so 5433 is only for host-side tools
+    # (e.g. `psql -p 5433`). Drop the mapping entirely if not needed.
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mlb_market_value"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mlb-mv-api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/mlb_market_value
+      # Which season to ingest (with salaries) and how many prior seasons to
+      # backfill (without salaries, for projection history). If SEASON is unset,
+      # run_all defaults to the current calendar year; set explicitly for
+      # reproducibility.
+      #
+      # HISTORY_SEASONS defaults to 0: backfilling prior seasons pulls the
+      # pitch-by-pitch Statcast extension data, which is memory-hungry and can
+      # OOM-kill the api container on hosts with limited RAM. Bump to 3 on a
+      # machine with headroom (see README "Historical backfill").
+      SEASON: "2026"
+      HISTORY_SEASONS: "0"
+    depends_on:
+      db:
+        condition: service_healthy
+    # The Statcast pitch-by-pitch extension pull (and projections) can spike
+    # memory well past the 2GB Docker default, which OOM-kills the ingest
+    # (exit -9). Give the api container a comfortable ceiling.
+    mem_limit: 4g
+    ports:
+      - "8000:8000"
+    # Live source for dashboard template edits -- no rebuild needed for
+    # HTML/JS/CSS changes, just save + refresh. Data still comes from the DB
+    # via /api/dashboard.
+    volumes:
+      - ./frontend/dashboard:/app/frontend/dashboard
+    # Entrypoint: migrations -> conditional ingest -> compute value -> boot
+    # uvicorn. Idempotent: seasons already in the DB are skipped, so restarts
+    # don't re-fetch from the network. Override with
+    # `docker compose exec api python -m app.pipeline.run_all --migrate-only`
+    # for a one-shot schema job, or adjust SEASON/HISTORY_SEASONS env vars.
+    command: >
+      sh -c "python -m app.pipeline.run_all --season $${SEASON} --history-seasons $${HISTORY_SEASONS}"
+    restart: unless-stopped
+
+volumes:
+  mlb_mv_pgdata:
+    name: mlb_mv_pgdata

@@ -1,0 +1,657 @@
+{
+  "players": [
+    {
+      "id": 1,
+      "rawScore": 6.766666666666665,
+      "compPct": 100,
+      "grade": "S",
+      "salPct": 100,
+      "score": 0,
+      "projectedPct": null,
+      "recommendedSalary": null,
+      "paySurplus": null,
+      "projectedSalary": null,
+      "surplus": null,
+      "breakdown": [
+        {
+          "key": "xwoba",
+          "value": 0.35,
+          "z": 0.9999999999999998,
+          "contribution": 2.999999999999999
+        },
+        {
+          "key": "xba",
+          "value": 0.25,
+          "z": 0.33333333333333365,
+          "contribution": 0.33333333333333365
+        },
+        {
+          "key": "xslg",
+          "value": 0.45,
+          "z": 0.8333333333333331,
+          "contribution": 1.2499999999999998
+        },
+        {
+          "key": "barrel_rate",
+          "value": 8,
+          "z": 0.3333333333333333,
+          "contribution": 0.5
+        },
+        {
+          "key": "hard_hit_rate",
+          "value": 40,
+          "z": 0.25,
+          "contribution": 0.25
+        },
+        {
+          "key": "chase_rate",
+          "value": 0.2,
+          "z": 0.3999999999999998,
+          "contribution": 0.3999999999999998
+        },
+        {
+          "key": "whiff_rate",
+          "value": 0.25,
+          "z": -0.20000000000000018,
+          "contribution": -0.20000000000000018
+        },
+        {
+          "key": "k_rate",
+          "value": 0.2,
+          "z": 0.19999999999999962,
+          "contribution": 0.19999999999999962
+        },
+        {
+          "key": "bb_rate",
+          "value": 0.1,
+          "z": 0.33333333333333365,
+          "contribution": 0.33333333333333365
+        },
+        {
+          "key": "oaa",
+          "value": 2,
+          "z": 0.6666666666666666,
+          "contribution": 0.4666666666666666
+        },
+        {
+          "key": "frv",
+          "value": 1,
+          "z": 0.3333333333333333,
+          "contribution": 0.2333333333333333
+        },
+        {
+          "key": "drs",
+          "value": 0,
+          "z": 0,
+          "contribution": 0
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "rawScore": 0,
+      "compPct": 0,
+      "grade": "F",
+      "salPct": null,
+      "score": 0,
+      "projectedPct": null,
+      "recommendedSalary": 1000000,
+      "paySurplus": 300000,
+      "projectedSalary": 1000000,
+      "surplus": 300000,
+      "breakdown": [
+        {
+          "key": "xwoba",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "xba",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "xslg",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "barrel_rate",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "hard_hit_rate",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "chase_rate",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "whiff_rate",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "k_rate",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "bb_rate",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "oaa",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "frv",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "drs",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "rawScore": 15.16416666666667,
+      "compPct": 100,
+      "grade": "S",
+      "salPct": 100,
+      "score": 0,
+      "projectedPct": 100,
+      "recommendedSalary": 5000000,
+      "paySurplus": -15000000,
+      "projectedSalary": null,
+      "surplus": null,
+      "breakdown": [
+        {
+          "key": "xera",
+          "value": 3.2,
+          "z": 1.6666666666666667,
+          "contribution": 3.3333333333333335
+        },
+        {
+          "key": "xba_against",
+          "value": 0.21,
+          "z": 1,
+          "contribution": 1
+        },
+        {
+          "key": "avg_exit_velo_against",
+          "value": 88,
+          "z": 0.8333333333333333,
+          "contribution": 0.6666666666666666
+        },
+        {
+          "key": "hard_hit_rate_against",
+          "value": 32,
+          "z": 1.1666666666666667,
+          "contribution": 1.1666666666666667
+        },
+        {
+          "key": "barrel_rate_against",
+          "value": 6,
+          "z": 0.8,
+          "contribution": 0.96
+        },
+        {
+          "key": "k_rate",
+          "value": 0.28,
+          "z": 1.2000000000000004,
+          "contribution": 1.8000000000000007
+        },
+        {
+          "key": "bb_rate",
+          "value": 0.06,
+          "z": 1.0000000000000002,
+          "contribution": 1.0000000000000002
+        },
+        {
+          "key": "chase_rate",
+          "value": 0.3,
+          "z": 0.7499999999999992,
+          "contribution": 0.7499999999999992
+        },
+        {
+          "key": "whiff_rate",
+          "value": 0.3,
+          "z": 0.7999999999999996,
+          "contribution": 0.7999999999999996
+        },
+        {
+          "key": "z_swing_rate",
+          "value": 0.65,
+          "z": -0.33333333333333365,
+          "contribution": -0.16666666666666682
+        },
+        {
+          "key": "extension",
+          "value": 6.2,
+          "z": 0.6666666666666673,
+          "contribution": 0.6666666666666673
+        },
+        {
+          "key": "stuff_plus",
+          "value": 115,
+          "z": 1.5,
+          "contribution": 2.25
+        },
+        {
+          "key": "location_plus",
+          "value": 105,
+          "z": 0.625,
+          "contribution": 0.9375
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "rawScore": -9.668333333333335,
+      "compPct": 0,
+      "grade": "F",
+      "salPct": 0,
+      "score": 0,
+      "projectedPct": 0,
+      "recommendedSalary": 20000000,
+      "paySurplus": 15000000,
+      "projectedSalary": null,
+      "surplus": null,
+      "breakdown": [
+        {
+          "key": "xera",
+          "value": 4.8,
+          "z": -0.9999999999999994,
+          "contribution": -1.999999999999999
+        },
+        {
+          "key": "xba_against",
+          "value": 0.26,
+          "z": -0.6666666666666673,
+          "contribution": -0.6666666666666673
+        },
+        {
+          "key": "avg_exit_velo_against",
+          "value": 91,
+          "z": -0.8333333333333333,
+          "contribution": -0.6666666666666666
+        },
+        {
+          "key": "hard_hit_rate_against",
+          "value": 44,
+          "z": -0.8333333333333334,
+          "contribution": -0.8333333333333334
+        },
+        {
+          "key": "barrel_rate_against",
+          "value": 10,
+          "z": -0.8,
+          "contribution": -0.96
+        },
+        {
+          "key": "k_rate",
+          "value": 0.18,
+          "z": -0.8000000000000002,
+          "contribution": -1.2000000000000002
+        },
+        {
+          "key": "bb_rate",
+          "value": 0.09,
+          "z": -0.4999999999999997,
+          "contribution": -0.4999999999999997
+        },
+        {
+          "key": "chase_rate",
+          "value": 0.25,
+          "z": -0.5000000000000004,
+          "contribution": -0.5000000000000004
+        },
+        {
+          "key": "whiff_rate",
+          "value": 0.22,
+          "z": -0.8000000000000002,
+          "contribution": -0.8000000000000002
+        },
+        {
+          "key": "z_swing_rate",
+          "value": 0.6,
+          "z": 0.5000000000000004,
+          "contribution": 0.2500000000000002
+        },
+        {
+          "key": "extension",
+          "value": 5.8,
+          "z": -0.6666666666666673,
+          "contribution": -0.6666666666666673
+        },
+        {
+          "key": "stuff_plus",
+          "value": 95,
+          "z": -0.5,
+          "contribution": -0.75
+        },
+        {
+          "key": "location_plus",
+          "value": 98,
+          "z": -0.25,
+          "contribution": -0.375
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "rawScore": 4.041666666666668,
+      "compPct": 50,
+      "grade": "C+",
+      "salPct": null,
+      "score": 50,
+      "projectedPct": 50,
+      "recommendedSalary": 5000000,
+      "paySurplus": 4300000,
+      "projectedSalary": 5000000,
+      "surplus": 4300000,
+      "breakdown": [
+        {
+          "key": "xera",
+          "value": 4,
+          "z": 0.33333333333333365,
+          "contribution": 0.6666666666666673
+        },
+        {
+          "key": "xba_against",
+          "value": 0.24,
+          "z": 0,
+          "contribution": 0
+        },
+        {
+          "key": "avg_exit_velo_against",
+          "value": 89.5,
+          "z": 0,
+          "contribution": 0
+        },
+        {
+          "key": "hard_hit_rate_against",
+          "value": 38,
+          "z": 0.16666666666666666,
+          "contribution": 0.16666666666666666
+        },
+        {
+          "key": "barrel_rate_against",
+          "value": 8,
+          "z": 0,
+          "contribution": 0
+        },
+        {
+          "key": "k_rate",
+          "value": 0.24,
+          "z": 0.3999999999999998,
+          "contribution": 0.5999999999999996
+        },
+        {
+          "key": "bb_rate",
+          "value": 0.07,
+          "z": 0.4999999999999997,
+          "contribution": 0.4999999999999997
+        },
+        {
+          "key": "chase_rate",
+          "value": 0.28,
+          "z": 0.2500000000000002,
+          "contribution": 0.2500000000000002
+        },
+        {
+          "key": "whiff_rate",
+          "value": 0.27,
+          "z": 0.20000000000000018,
+          "contribution": 0.20000000000000018
+        },
+        {
+          "key": "z_swing_rate",
+          "value": 0.62,
+          "z": 0.16666666666666682,
+          "contribution": 0.08333333333333341
+        },
+        {
+          "key": "extension",
+          "value": 6,
+          "z": 0,
+          "contribution": 0
+        },
+        {
+          "key": "stuff_plus",
+          "value": 108,
+          "z": 0.8,
+          "contribution": 1.2000000000000002
+        },
+        {
+          "key": "location_plus",
+          "value": 102,
+          "z": 0.25,
+          "contribution": 0.375
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "rawScore": 2.7261904761904754,
+      "compPct": 100,
+      "grade": "S",
+      "salPct": null,
+      "score": 100,
+      "projectedPct": null,
+      "recommendedSalary": null,
+      "paySurplus": null,
+      "projectedSalary": null,
+      "surplus": null,
+      "breakdown": [
+        {
+          "key": "xera",
+          "value": 3.6,
+          "z": 0.5714285714285713,
+          "contribution": 1.1428571428571426
+        },
+        {
+          "key": "xba_against",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "avg_exit_velo_against",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "hard_hit_rate_against",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "barrel_rate_against",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "k_rate",
+          "value": 0.3,
+          "z": 0.8333333333333331,
+          "contribution": 1.2499999999999998
+        },
+        {
+          "key": "bb_rate",
+          "value": 0.08,
+          "z": 0.3333333333333332,
+          "contribution": 0.3333333333333332
+        },
+        {
+          "key": "chase_rate",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "whiff_rate",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "z_swing_rate",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "extension",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "stuff_plus",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "location_plus",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "rawScore": -5.678571428571429,
+      "compPct": 0,
+      "grade": "F",
+      "salPct": null,
+      "score": 0,
+      "projectedPct": 100,
+      "recommendedSalary": null,
+      "paySurplus": null,
+      "projectedSalary": null,
+      "surplus": null,
+      "breakdown": [
+        {
+          "key": "xera",
+          "value": 5.2,
+          "z": -1.7142857142857146,
+          "contribution": -3.4285714285714293
+        },
+        {
+          "key": "xba_against",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "avg_exit_velo_against",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "hard_hit_rate_against",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "barrel_rate_against",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "k_rate",
+          "value": 0.2,
+          "z": -0.8333333333333331,
+          "contribution": -1.2499999999999998
+        },
+        {
+          "key": "bb_rate",
+          "value": 0.12,
+          "z": -1,
+          "contribution": -1
+        },
+        {
+          "key": "chase_rate",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "whiff_rate",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "z_swing_rate",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "extension",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "stuff_plus",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        },
+        {
+          "key": "location_plus",
+          "value": null,
+          "z": null,
+          "contribution": 0
+        }
+      ]
+    }
+  ],
+  "teams": [
+    {
+      "abbr": "T1",
+      "avgScore": 0
+    },
+    {
+      "abbr": "T2",
+      "avgScore": 0
+    },
+    {
+      "abbr": "T3",
+      "avgScore": 0
+    }
+  ]
+}

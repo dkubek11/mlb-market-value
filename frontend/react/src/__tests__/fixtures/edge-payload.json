@@ -1,0 +1,340 @@
+{
+  "allPlayers": [
+    {
+      "id": 1,
+      "name": "Aaron C",
+      "team": "T1",
+      "position": "C",
+      "isBatter": true,
+      "isPreArb": false,
+      "salary": 1000000,
+      "aav": 1000000,
+      "contractType": "pre-arb",
+      "age": 25,
+      "nComps": 0,
+      "stats": {
+        "xwoba": 0.35,
+        "xba": 0.25,
+        "xslg": 0.45,
+        "barrel_rate": 8,
+        "hard_hit_rate": 40,
+        "chase_rate": 0.2,
+        "whiff_rate": 0.25,
+        "k_rate": 0.2,
+        "bb_rate": 0.1,
+        "oaa": 2,
+        "frv": 1,
+        "drs": 0
+      },
+      "projected": {}
+    },
+    {
+      "id": 2,
+      "name": "Bobby C",
+      "team": "T1",
+      "position": "C",
+      "isBatter": true,
+      "isPreArb": true,
+      "salary": 700000,
+      "aav": 700000,
+      "contractType": null,
+      "age": 22,
+      "nComps": 0,
+      "stats": {
+        "xwoba": null,
+        "xba": null,
+        "xslg": null,
+        "barrel_rate": null,
+        "hard_hit_rate": null,
+        "chase_rate": null,
+        "whiff_rate": null,
+        "k_rate": null,
+        "bb_rate": null,
+        "oaa": null,
+        "frv": null,
+        "drs": null
+      },
+      "projected": {}
+    },
+    {
+      "id": 3,
+      "name": "Cy Young Jr",
+      "team": "T2",
+      "position": "SP",
+      "isBatter": false,
+      "isPreArb": false,
+      "salary": 20000000,
+      "aav": 20000000,
+      "contractType": "extension",
+      "age": 30,
+      "nComps": 1,
+      "stats": {
+        "xera": 3.2,
+        "xba_against": 0.21,
+        "avg_exit_velo_against": 88,
+        "hard_hit_rate_against": 32,
+        "barrel_rate_against": 6,
+        "k_rate": 0.28,
+        "bb_rate": 0.06,
+        "chase_rate": 0.3,
+        "whiff_rate": 0.3,
+        "z_swing_rate": 0.65,
+        "extension": 6.2,
+        "stuff_plus": 115,
+        "location_plus": 105
+      },
+      "projected": {
+        "xera": 3.5
+      }
+    },
+    {
+      "id": 4,
+      "name": "Dan Smith",
+      "team": "T2",
+      "position": "SP",
+      "isBatter": false,
+      "isPreArb": false,
+      "salary": 5000000,
+      "aav": 5000000,
+      "contractType": "arb",
+      "age": 28,
+      "nComps": 1,
+      "stats": {
+        "xera": 4.8,
+        "xba_against": 0.26,
+        "avg_exit_velo_against": 91,
+        "hard_hit_rate_against": 44,
+        "barrel_rate_against": 10,
+        "k_rate": 0.18,
+        "bb_rate": 0.09,
+        "chase_rate": 0.25,
+        "whiff_rate": 0.22,
+        "z_swing_rate": 0.6,
+        "extension": 5.8,
+        "stuff_plus": 95,
+        "location_plus": 98
+      },
+      "projected": {
+        "xera": 4.5
+      }
+    },
+    {
+      "id": 5,
+      "name": "Eli Prospect",
+      "team": "T2",
+      "position": "SP",
+      "isBatter": false,
+      "isPreArb": true,
+      "salary": 700000,
+      "aav": 700000,
+      "contractType": null,
+      "age": 23,
+      "nComps": 0,
+      "stats": {
+        "xera": 4,
+        "xba_against": 0.24,
+        "avg_exit_velo_against": 89.5,
+        "hard_hit_rate_against": 38,
+        "barrel_rate_against": 8,
+        "k_rate": 0.24,
+        "bb_rate": 0.07,
+        "chase_rate": 0.28,
+        "whiff_rate": 0.27,
+        "z_swing_rate": 0.62,
+        "extension": 6,
+        "stuff_plus": 108,
+        "location_plus": 102
+      },
+      "projected": {
+        "xera": 4
+      }
+    },
+    {
+      "id": 6,
+      "name": "Fred Reliever",
+      "team": "T3",
+      "position": "RP",
+      "isBatter": false,
+      "isPreArb": true,
+      "salary": 700000,
+      "aav": 700000,
+      "contractType": null,
+      "age": 24,
+      "nComps": 0,
+      "stats": {
+        "xera": 3.6,
+        "k_rate": 0.3,
+        "bb_rate": 0.08
+      },
+      "projected": {}
+    },
+    {
+      "id": 7,
+      "name": "Gus Reliever",
+      "team": "T3",
+      "position": "RP",
+      "isBatter": false,
+      "isPreArb": true,
+      "salary": 700000,
+      "aav": 700000,
+      "contractType": null,
+      "age": 26,
+      "nComps": 0,
+      "stats": {
+        "xera": 5.2,
+        "k_rate": 0.2,
+        "bb_rate": 0.12
+      },
+      "projected": {
+        "xera": 5
+      }
+    }
+  ],
+  "positionStats": {
+    "C": {
+      "xwoba": {
+        "mean": 0.3,
+        "std": 0.05
+      },
+      "xba": {
+        "mean": 0.24,
+        "std": 0.03
+      },
+      "xslg": {
+        "mean": 0.4,
+        "std": 0.06
+      },
+      "barrel_rate": {
+        "mean": 7,
+        "std": 3
+      },
+      "hard_hit_rate": {
+        "mean": 38,
+        "std": 8
+      },
+      "chase_rate": {
+        "mean": 0.22,
+        "std": 0.05
+      },
+      "whiff_rate": {
+        "mean": 0.24,
+        "std": 0.05
+      },
+      "k_rate": {
+        "mean": 0.21,
+        "std": 0.05
+      },
+      "bb_rate": {
+        "mean": 0.09,
+        "std": 0.03
+      },
+      "oaa": {
+        "mean": 0,
+        "std": 3
+      },
+      "frv": {
+        "mean": 0,
+        "std": 3
+      },
+      "drs": {
+        "mean": 0,
+        "std": 4
+      }
+    },
+    "SP": {
+      "xera": {
+        "mean": 4.2,
+        "std": 0.6
+      },
+      "xba_against": {
+        "mean": 0.24,
+        "std": 0.03
+      },
+      "avg_exit_velo_against": {
+        "mean": 89.5,
+        "std": 1.8
+      },
+      "hard_hit_rate_against": {
+        "mean": 39,
+        "std": 6
+      },
+      "barrel_rate_against": {
+        "mean": 8,
+        "std": 2.5
+      },
+      "k_rate": {
+        "mean": 0.22,
+        "std": 0.05
+      },
+      "bb_rate": {
+        "mean": 0.08,
+        "std": 0.02
+      },
+      "chase_rate": {
+        "mean": 0.27,
+        "std": 0.04
+      },
+      "whiff_rate": {
+        "mean": 0.26,
+        "std": 0.05
+      },
+      "z_swing_rate": {
+        "mean": 0.63,
+        "std": 0.06
+      },
+      "extension": {
+        "mean": 6,
+        "std": 0.3
+      },
+      "stuff_plus": {
+        "mean": 100,
+        "std": 10
+      },
+      "location_plus": {
+        "mean": 100,
+        "std": 8
+      }
+    },
+    "RP": {
+      "xera": {
+        "mean": 4,
+        "std": 0.7
+      },
+      "k_rate": {
+        "mean": 0.25,
+        "std": 0.06
+      },
+      "bb_rate": {
+        "mean": 0.09,
+        "std": 0.03
+      }
+    }
+  },
+  "teams": [
+    {
+      "abbr": "T1",
+      "name": "Team One",
+      "league": "AL",
+      "division": "East",
+      "payroll": 1700000
+    },
+    {
+      "abbr": "T2",
+      "name": "Team Two",
+      "league": "AL",
+      "division": "Central",
+      "payroll": 25700000
+    },
+    {
+      "abbr": "T3",
+      "name": "Team Three",
+      "league": "NL",
+      "division": "West",
+      "payroll": 1400000
+    }
+  ],
+  "rosters": {},
+  "teamColors": {},
+  "contracts": {},
+  "capturedAt": "edge-case fixture (synthetic)"
+}

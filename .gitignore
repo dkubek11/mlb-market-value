@@ -15,3 +15,6 @@ frontend/dashboard/dashboard_final.html
 
 # Runtime logs from scripts/nightly_refresh.ps1
 scripts/logs/
+
+logs/
+plans/
