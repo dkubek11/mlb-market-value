@@ -78,6 +78,18 @@ def fetch_all_salaries(season: int) -> list[dict]:
                         "player_id": int(summary["MLBAMID"]),
                         "team_abbreviation": abbreviation,
                         "salary": year.get("Salary"),
+                        # Real accrued MLB service time (years.days), straight from
+                        # RosterResource's own contract data -- joined by MLBAMID
+                        # like everything else here, so no name-matching risk, and
+                        # present for pre-arb/arb/guaranteed-contract players alike
+                        # (unlike MLBTR's tracker, which only lists arb-eligible
+                        # players). Reflects service time entering the season this
+                        # payroll page is currently showing.
+                        "service_time": (
+                            float(summary["servicetime"])
+                            if summary.get("servicetime") not in (None, "")
+                            else None
+                        ),
                         # contractSummary.AAV is the deal-level, constant average
                         # annual value -- the number actually reported as a
                         # player's "AAV" everywhere. contractYears[].AAV is a

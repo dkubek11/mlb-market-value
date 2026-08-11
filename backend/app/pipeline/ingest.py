@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -9,6 +11,7 @@ from app.models import (
     League,
     PitcherStats,
     Player,
+    PlayerAward,
     PlayerSalary,
     PlayerSeason,
     PlayerType,
@@ -20,7 +23,9 @@ from app.pipeline import (
     fangraphs_pitching,
     fangraphs_salary,
     fielding_metrics,
+    mlb_awards,
     mlb_stats_api,
+    mlbtr_arbitration,
     statcast_extension,
     statcast_metrics,
 )
@@ -78,6 +83,38 @@ def _compute_fip_constant(pitching_splits: list[dict]) -> Decimal:
     return league_era - raw_component
 
 
+def _normalize_name(name: str) -> str:
+    """Strips accents/punctuation/case so names from different sources (MLB
+    Stats API's players.full_name vs. MLBTR's article text) compare equal --
+    e.g. 'José Soriano' and 'Jose Soriano' both normalize to 'jose soriano'."""
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z\s]", "", ascii_name.lower())).strip()
+
+
+def _match_service_times(db: Session, service_times: dict[str, float]) -> dict[int, float]:
+    """Maps MLBTR player names to player_id via normalized full_name. MLBTR
+    has no MLBAM IDs to join on directly (unlike RosterResource), so this is
+    the only source that needs name matching -- misses are logged and simply
+    left without real service_time (the debut-year proxy is used downstream
+    instead)."""
+    all_players = db.query(Player.player_id, Player.full_name).all()
+    by_normalized = {_normalize_name(name): pid for pid, name in all_players}
+
+    matched: dict[int, float] = {}
+    unmatched = []
+    for name, svc in service_times.items():
+        pid = by_normalized.get(_normalize_name(name))
+        if pid is not None:
+            matched[pid] = svc
+        else:
+            unmatched.append(name)
+
+    if unmatched:
+        print(f"  (MLBTR service-time name matches: {len(matched)}/{len(service_times)}; "
+              f"unmatched: {', '.join(unmatched[:10])}{'...' if len(unmatched) > 10 else ''})")
+    return matched
+
+
 def _resolve_team_id(split: dict, season: int, group: str) -> int | None:
     if split.get("numTeams", 1) <= 1:
         return split["team"]["id"]
@@ -120,6 +157,7 @@ def _ingest_salaries(
     resolved_teams: dict[int, int],
     salary_rows: list[dict],
     abbreviation_to_team_id: dict[str, int],
+    service_times: dict[int, float],
 ) -> tuple[int, int]:
     rows_by_player: dict[int, list[dict]] = {}
     for row in salary_rows:
@@ -146,6 +184,7 @@ def _ingest_salaries(
             skipped += 1
             continue
 
+        svc = service_times.get(pid)
         db.merge(
             PlayerSalary(
                 player_id=pid,
@@ -155,6 +194,7 @@ def _ingest_salaries(
                 aav=Decimal(str(chosen["aav"])),
                 contract_years_total=chosen["contract_years_total"],
                 contract_type=chosen["contract_type"],
+                service_time=Decimal(str(svc)) if svc is not None else None,
                 source=SOURCE_SALARY,
                 scraped_at=now,
             )
@@ -162,6 +202,41 @@ def _ingest_salaries(
         ingested += 1
 
     return ingested, skipped
+
+
+def _reconcile_player_seasons_team(
+    db: Session, season: int, salary_rows: list[dict], abbreviation_to_team_id: dict[str, int]
+) -> int:
+    """FanGraphs RosterResource reflects trades almost immediately (it's a
+    roster/contract tracker), while player_seasons.team_id comes from the MLB
+    Stats API's own season-stat splits (_resolve_team_id above) and only
+    updates once a traded player has actually recorded a stat line with
+    their new team -- a real gap of a day or more around the trade deadline.
+    During that gap a traded player still shows under their OLD team (and is
+    missing from their new team's roster) everywhere in the dashboard, since
+    both the main player list and the Teams-tab diamond read
+    player_seasons.team_id. This overrides it with RosterResource's team for
+    any player who already has a player_seasons row this season -- same
+    highest-AAV tiebreak _ingest_salaries above uses when a traded player has
+    multiple contract rows in one season."""
+    rows_by_player: dict[int, list[dict]] = {}
+    for row in salary_rows:
+        rows_by_player.setdefault(row["player_id"], []).append(row)
+
+    latest_team_id: dict[int, int] = {}
+    for pid, rows in rows_by_player.items():
+        chosen = max(rows, key=lambda r: r["aav"] or 0)
+        team_id = abbreviation_to_team_id.get(chosen["team_abbreviation"])
+        if team_id is not None:
+            latest_team_id[pid] = team_id
+
+    updated = 0
+    for ps in db.query(PlayerSeason).filter(PlayerSeason.season == season).all():
+        team_id = latest_team_id.get(ps.player_id)
+        if team_id is not None and team_id != ps.team_id:
+            ps.team_id = team_id
+            updated += 1
+    return updated
 
 
 def ingest_season(db: Session, season: int, include_salary: bool = True) -> None:
@@ -254,6 +329,8 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
                 hr=stat.get("homeRuns"),
                 rbi=stat.get("rbi"),
                 sb=stat.get("stolenBases"),
+                hits=stat.get("hits"),
+                games=stat.get("gamesPlayed"),
                 barrel_rate=adv.get("barrel_rate"),
                 hard_hit_rate=adv.get("hard_hit_rate"),
                 avg_exit_velo=adv.get("avg_exit_velo"),
@@ -262,6 +339,7 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
                 bb_rate=(Decimal(stat["baseOnBalls"]) / pa) if pa else None,
                 chase_rate=pd_row.get("chase_rate"),
                 whiff_rate=pd_row.get("whiff_rate"),
+                war=pd_row.get("war"),
                 source=SOURCE_STATS,
                 scraped_at=now,
             )
@@ -313,6 +391,9 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
                 fip=fip,
                 k_9=_clean_stat(stat.get("strikeoutsPer9Inn")),
                 bb_9=_clean_stat(stat.get("walksPer9Inn")),
+                wins=stat.get("wins"),
+                saves=stat.get("saves"),
+                games_started=games_started,
                 xera=adv.get("xera"),
                 xwoba_against=adv.get("xwoba_against"),
                 xba_against=adv.get("xba_against"),
@@ -327,6 +408,7 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
                 extension=pitcher_extension.get(pid),
                 stuff_plus=pd_row.get("stuff_plus"),
                 location_plus=pd_row.get("location_plus"),
+                war=pd_row.get("war"),
                 source=SOURCE_STATS,
                 scraped_at=now,
             )
@@ -388,16 +470,63 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
             _upsert_players(db, new_player_ids)
             db.commit()
 
+        print(f"[{season}] fetching real service time from MLB Trade Rumors arbitration tracker...")
+        try:
+            raw_service_times = mlbtr_arbitration.fetch_service_times(season)
+            service_times = _match_service_times(db, raw_service_times)
+        except Exception as exc:  # tracker page may not exist yet for a future/unsettled season
+            print(f"  (MLBTR arbitration tracker unavailable for {season}: {exc})")
+            service_times = {}
+
+        # RosterResource's own service_time (already pulled per-row above via
+        # MLBAMID, no name matching) covers pre-arb and guaranteed-contract
+        # players too, not just the arb-eligible subset MLBTR's tracker lists --
+        # prefer it wherever both sources have an entry for the same player.
+        fg_service_times = {
+            r["player_id"]: r["service_time"] for r in salary_rows if r.get("service_time") is not None
+        }
+        print(f"  (RosterResource service-time coverage: {len(fg_service_times)}/{len(salary_player_ids)} salaried players)")
+        service_times = {**service_times, **fg_service_times}
+
         ingested_salaries, skipped_salaries = _ingest_salaries(
-            db, season, now, resolved_teams, salary_rows, abbreviation_to_team_id
+            db, season, now, resolved_teams, salary_rows, abbreviation_to_team_id, service_times
         )
+
+        reconciled_teams = _reconcile_player_seasons_team(db, season, salary_rows, abbreviation_to_team_id)
+        if reconciled_teams:
+            print(f"[{season}] reconciled {reconciled_teams} player(s) to a fresher team via RosterResource "
+                  f"(trade not yet reflected in season-stat splits)")
         db.commit()
     else:
         ingested_salaries, skipped_salaries = 0, 0
+
+    print(f"[{season}] fetching MVP/Cy Young/ROY/All-Star/Silver Slugger/Gold Glove winners...")
+    try:
+        award_rows = mlb_awards.fetch_awards_for_season(season)
+    except Exception as exc:  # awards for an in-progress/future season aren't decided yet
+        print(f"  (awards unavailable for {season}: {exc})")
+        award_rows = []
+    known_player_ids = {pid for (pid,) in db.query(Player.player_id).all()}
+    ingested_awards = skipped_awards = 0
+    for row in award_rows:
+        if row["player_id"] not in known_player_ids:
+            skipped_awards += 1
+            continue
+        db.merge(
+            PlayerAward(
+                player_id=row["player_id"],
+                season=season,
+                award_id=row["award_id"],
+                scraped_at=now,
+            )
+        )
+        ingested_awards += 1
+    db.commit()
 
     print(
         f"[{season}] done. batters: {len(hitting_splits) - skipped_batters} "
         f"({skipped_batters} skipped), pitchers: {len(pitching_splits) - skipped_pitchers} "
         f"({skipped_pitchers} skipped), fielders: {len(fielding_player_ids) - skipped_fielders} "
-        f"({skipped_fielders} skipped), salaries: {ingested_salaries} ({skipped_salaries} skipped)"
+        f"({skipped_fielders} skipped), salaries: {ingested_salaries} ({skipped_salaries} skipped), "
+        f"awards: {ingested_awards} ({skipped_awards} skipped)"
     )

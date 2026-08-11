@@ -1,0 +1,9 @@
+{
+  "name": "mlb-market-value-validate",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Headless-browser validation of the built dashboard: runs the real client-side computation and checks for NaNs, distribution sanity, and coverage -- the same checks done by hand throughout the site's development.",
+  "dependencies": {
+    "playwright": "^1.47.0"
+  }
+}
