@@ -324,7 +324,9 @@
     width: 82px; height: 82px; border-radius: 50%; background: var(--surface);
     border: 4px solid var(--surface); display: flex; align-items: center; justify-content: center;
     font-size: 26px; font-weight: 800; color: var(--team-1); box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    overflow: hidden;
   }
+  .card-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
   .card-grade-badge {
     position: absolute; bottom: -3px; right: -8px; background: var(--accent); color: var(--accent-ink);
     font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 9px; border: 2px solid var(--surface);
@@ -1122,7 +1124,7 @@
         <div class="card-head">
           <div class="card-head-top"><span>${record.team}</span><span>2026</span></div>
           <div class="card-avatar-wrap">
-            <div class="card-avatar">${initials(record.name)}</div>
+            <div class="card-avatar">${record.headshot ? `<img src="${record.headshot}" alt="" onerror="this.parentElement.textContent='${initials(record.name)}'">` : initials(record.name)}</div>
             <div class="card-grade-badge">${grade}</div>
           </div>
         </div>
@@ -1387,9 +1389,19 @@
     const score = scoreLabel(record);
     const fillHue = record.isPreArb ? 'var(--accent)' : (record.score >= 0 ? 'var(--good)' : 'var(--bad)');
     const nameShort = record.name.length > 16 ? record.name.split(' ').pop() : record.name;
+    // The colored ring still shows the same at-a-glance score signal it
+    // always did; a real headshot (clipped to a slightly smaller circle, so
+    // the ring reads as a border) replaces the initials inside it when one
+    // is available.
+    const photoR = r - 3;
+    const clipId = `avatar-clip-${record.id}`;
+    const avatarInner = record.headshot
+      ? `<clipPath id="${clipId}"><circle cx="${c.x}" cy="${c.y}" r="${photoR}" /></clipPath>
+         <image href="${record.headshot}" x="${c.x - photoR}" y="${c.y - photoR}" width="${photoR * 2}" height="${photoR * 2}" clip-path="url(#${clipId})" preserveAspectRatio="xMidYMid slice" />`
+      : `<text x="${c.x}" y="${c.y + 5}" text-anchor="middle" class="pos-initials">${initials(record.name)}</text>`;
     return `<g class="pos-marker" data-pid="${record.id}" data-pos="${pos}">
       <circle class="pos-avatar-ring" cx="${c.x}" cy="${c.y}" r="${r}" fill="${fillHue}" fill-opacity="0.9" />
-      <text x="${c.x}" y="${c.y + 5}" text-anchor="middle" class="pos-initials">${initials(record.name)}</text>
+      ${avatarInner}
       <text x="${c.x}" y="${c.y - r - 8}" text-anchor="middle" class="pos-tag">${pos}</text>
       <text x="${c.x}" y="${c.y + r + 16}" text-anchor="middle" class="pos-name">${nameShort}</text>
       <text x="${c.x}" y="${c.y + r + 30}" text-anchor="middle" class="pos-score ${score.cls}">${score.text}</text>

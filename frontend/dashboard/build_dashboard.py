@@ -22,6 +22,7 @@ from app.pipeline.projections import (
 )
 from app.pipeline.comp_projections import compute_batter_comp_projections, compute_pitcher_comp_projections
 from app.pipeline.fangraphs_salary import TEAM_SLUG_TO_ABBREVIATION, fetch_team_contracts
+from headshots import get_headshot_data_uri
 
 HERE = __import__("pathlib").Path(__file__).parent
 season = int(sys.argv[1]) if len(sys.argv) > 1 else 2026
@@ -395,15 +396,22 @@ def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map):
         # the player wasn't arb-eligible yet) -- the frontend skips the floor
         # rather than guessing.
         "arbSalaryHistory": arb_salary_history_by_player.get(int(r.player_id), {}),
+        # Real MLB headshot, base64-embedded (see headshots.py) -- None for
+        # the rare player MLB hasn't published a photo for yet (very new
+        # call-ups), which the frontend falls back to an initials avatar for.
+        "headshot": get_headshot_data_uri(int(r.player_id)),
     }
 
 
+print(f"[{season}] fetching headshots (only players missing from the local cache hit the network)...")
 all_players = (
     [to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys(), batter_history_by_player)
      for r in batters.itertuples()]
     + [to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys(), pitcher_history_by_player)
        for r in pitchers.itertuples()]
 )
+with_headshot = sum(1 for p in all_players if p["headshot"])
+print(f"  headshots: {with_headshot}/{len(all_players)}")
 
 print(f"[{season}] building team payroll + rosters (all rostered players, not just qualifiers)...")
 teams_df = pd.read_sql(TEAMS_Q, engine)
