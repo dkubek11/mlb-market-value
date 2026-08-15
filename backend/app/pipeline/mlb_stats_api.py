@@ -47,8 +47,13 @@ def fetch_bulk_stats(season: int, group: str) -> list[dict]:
 
 
 def resolve_traded_player_team(player_id: int, season: int, group: str) -> int | None:
-    """For players with numTeams > 1 in the bulk pull, look up their per-team splits
-    and return the team_id of their most recent stint that season."""
+    """For players with numTeams > 1 in the bulk pull, look up their per-team
+    splits and return the team_id they accumulated the most real playing time
+    with that season (plate appearances for hitters, outs recorded for
+    pitchers) -- not simply their most recent stint. A player traded in the
+    season's final weeks should still be attributed to (and have their
+    season's value counted toward) whichever team actually got the bulk of
+    their year, not whoever currently has them on the active roster."""
     resp = requests.get(
         f"{BASE_URL}/people/{player_id}/stats",
         params={"stats": "season", "season": season, "sportId": SPORT_ID, "group": group},
@@ -59,7 +64,8 @@ def resolve_traded_player_team(player_id: int, season: int, group: str) -> int |
     team_splits = [s for s in splits if "team" in s]
     if not team_splits:
         return None
-    return team_splits[-1]["team"]["id"]
+    playing_time_key = "plateAppearances" if group == "hitting" else "outs"
+    return max(team_splits, key=lambda s: s["stat"].get(playing_time_key) or 0)["team"]["id"]
 
 
 def fetch_people_bio(player_ids: list[int]) -> dict[int, dict]:

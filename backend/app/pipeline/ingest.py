@@ -204,41 +204,6 @@ def _ingest_salaries(
     return ingested, skipped
 
 
-def _reconcile_player_seasons_team(
-    db: Session, season: int, salary_rows: list[dict], abbreviation_to_team_id: dict[str, int]
-) -> int:
-    """FanGraphs RosterResource reflects trades almost immediately (it's a
-    roster/contract tracker), while player_seasons.team_id comes from the MLB
-    Stats API's own season-stat splits (_resolve_team_id above) and only
-    updates once a traded player has actually recorded a stat line with
-    their new team -- a real gap of a day or more around the trade deadline.
-    During that gap a traded player still shows under their OLD team (and is
-    missing from their new team's roster) everywhere in the dashboard, since
-    both the main player list and the Teams-tab diamond read
-    player_seasons.team_id. This overrides it with RosterResource's team for
-    any player who already has a player_seasons row this season -- same
-    highest-AAV tiebreak _ingest_salaries above uses when a traded player has
-    multiple contract rows in one season."""
-    rows_by_player: dict[int, list[dict]] = {}
-    for row in salary_rows:
-        rows_by_player.setdefault(row["player_id"], []).append(row)
-
-    latest_team_id: dict[int, int] = {}
-    for pid, rows in rows_by_player.items():
-        chosen = max(rows, key=lambda r: r["aav"] or 0)
-        team_id = abbreviation_to_team_id.get(chosen["team_abbreviation"])
-        if team_id is not None:
-            latest_team_id[pid] = team_id
-
-    updated = 0
-    for ps in db.query(PlayerSeason).filter(PlayerSeason.season == season).all():
-        team_id = latest_team_id.get(ps.player_id)
-        if team_id is not None and team_id != ps.team_id:
-            ps.team_id = team_id
-            updated += 1
-    return updated
-
-
 def ingest_season(db: Session, season: int, include_salary: bool = True) -> None:
     """include_salary=False skips the RosterResource salary fetch -- useful for
     historical backfills, since RosterResource only exposes *current* rosters
@@ -469,11 +434,6 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
         ingested_salaries, skipped_salaries = _ingest_salaries(
             db, season, now, resolved_teams, salary_rows, abbreviation_to_team_id, service_times
         )
-
-        reconciled_teams = _reconcile_player_seasons_team(db, season, salary_rows, abbreviation_to_team_id)
-        if reconciled_teams:
-            print(f"[{season}] reconciled {reconciled_teams} player(s) to a fresher team via RosterResource "
-                  f"(trade not yet reflected in season-stat splits)")
         db.commit()
     else:
         ingested_salaries, skipped_salaries = 0, 0
