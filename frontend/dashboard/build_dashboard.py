@@ -44,8 +44,16 @@ LEAGUE_MINIMUM = LEAGUE_MINIMUM_BY_SEASON.get(season, LEAGUE_MINIMUM_BY_SEASON[m
 
 BATTER_STATS = ["ba", "obp", "slg", "xwoba", "xba", "xslg", "hr", "rbi", "sb",
                  "barrel_rate", "hard_hit_rate", "sprint_speed",
-                 "chase_rate", "whiff_rate", "k_rate", "bb_rate", "oaa", "frv", "drs",
+                 "chase_rate", "whiff_rate", "k_rate", "bb_rate", "k_minus_bb", "oaa", "frv", "drs",
                  "hits", "games", "war", "wrc_plus"]
+
+
+def _add_k_minus_bb(df: pd.DataFrame) -> pd.DataFrame:
+    """K% - BB% as its own composite input (replacing separate K%/BB% entries
+    in BATTER_STAT_CONFIG) -- a single discipline signal instead of two,
+    computed from the k_rate/bb_rate already fetched, no new data source."""
+    df["k_minus_bb"] = df["k_rate"] - df["bb_rate"]
+    return df
 PITCHER_STATS = ["era", "whip", "fip", "xera", "k_9", "bb_9",
                   "hard_hit_rate_against", "barrel_rate_against", "xba_against",
                   "avg_exit_velo_against", "chase_rate", "whiff_rate", "k_rate", "bb_rate",
@@ -237,6 +245,7 @@ batters = pd.read_sql(BATTER_Q, engine, params={"season": season, "min_pa": MIN_
 pitchers = pd.read_sql(PITCHER_Q, engine, params={"season": season, "min_ip_sp": MIN_IP_SP, "min_ip_rp": MIN_IP_RP})
 batters = _fill_verified_pre_arb(batters, "batters")
 pitchers = _fill_verified_pre_arb(pitchers, "pitchers")
+batters = _add_k_minus_bb(batters)
 batters["position"] = batters["position"].map(lambda p: POS_MAP.get(p, p))
 batters["is_pre_arb"] = batters["contract_type"].apply(_is_pre_arb)
 pitchers["is_pre_arb"] = pitchers["contract_type"].apply(_is_pre_arb)
@@ -286,6 +295,7 @@ hist_pitchers = pd.read_sql(
     params={"seasons": HISTORY_SEASONS, "min_ip_sp": MIN_IP_SP, "min_ip_rp": MIN_IP_RP},
 )
 hist_batters["position"] = hist_batters["position"].map(lambda p: POS_MAP.get(p, p))
+hist_batters = _add_k_minus_bb(hist_batters)
 
 # Wider window (matches arb_outcomes' real coverage -- see
 # backfill_arb_outcomes.py -- 2016-2025 excluding the 60-game 2020 season)
@@ -303,6 +313,7 @@ arb_stats_hist_pitchers = pd.read_sql(
     params={"seasons": ARB_STATS_SEASONS, "min_ip_sp": MIN_IP_SP, "min_ip_rp": MIN_IP_RP},
 )
 arb_stats_hist_batters["position"] = arb_stats_hist_batters["position"].map(lambda p: POS_MAP.get(p, p))
+arb_stats_hist_batters = _add_k_minus_bb(arb_stats_hist_batters)
 
 print(f"[{season}] querying awards history...")
 AWARDS_Q = text("""

@@ -1494,15 +1494,16 @@
   // of truth: every score/grade/value/projected-salary everywhere reads back
   // off the player objects that recomputeAll() below writes into) ---
   const BATTER_STAT_CONFIG = [
-    { key: 'xwoba', label: 'xwOBA', higherBetter: true, defaultWeight: 3.0, type: 'avg3' },
-    { key: 'xba', label: 'xBA', higherBetter: true, defaultWeight: 1.0, type: 'avg3' },
-    { key: 'xslg', label: 'xSLG', higherBetter: true, defaultWeight: 1.5, type: 'avg3' },
-    { key: 'barrel_rate', label: 'Barrel%', higherBetter: true, defaultWeight: 1.5, type: 'pct1' },
-    { key: 'hard_hit_rate', label: 'Hard-Hit%', higherBetter: true, defaultWeight: 1.0, type: 'pct1' },
-    { key: 'chase_rate', label: 'Chase%', higherBetter: false, defaultWeight: 1.0, type: 'fracPct1' },
-    { key: 'whiff_rate', label: 'Whiff%', higherBetter: false, defaultWeight: 1.0, type: 'fracPct1' },
-    { key: 'k_rate', label: 'K%', higherBetter: false, defaultWeight: 1.0, type: 'fracPct1' },
-    { key: 'bb_rate', label: 'BB%', higherBetter: true, defaultWeight: 1.0, type: 'fracPct1' },
+    { key: 'xwoba', label: 'xwOBA', higherBetter: true, defaultWeight: 2.75, type: 'avg3' },
+    { key: 'xba', label: 'xBA', higherBetter: true, defaultWeight: 0.5, type: 'avg3' },
+    { key: 'xslg', label: 'xSLG', higherBetter: true, defaultWeight: 0.95, type: 'avg3' },
+    { key: 'barrel_rate', label: 'Barrel%', higherBetter: true, defaultWeight: 1.35, type: 'pct1' },
+    { key: 'hard_hit_rate', label: 'Hard-Hit%', higherBetter: true, defaultWeight: 1.25, type: 'pct1' },
+    { key: 'chase_rate', label: 'Chase%', higherBetter: false, defaultWeight: 0.75, type: 'fracPct1' },
+    { key: 'whiff_rate', label: 'Whiff%', higherBetter: false, defaultWeight: 0.8, type: 'fracPct1' },
+    // K% and BB% combined into one discipline signal instead of two separate
+    // sliders -- lower is better (fewer strikeouts relative to walks).
+    { key: 'k_minus_bb', label: 'K-BB%', higherBetter: false, defaultWeight: 1.5, type: 'fracPct1' },
     { key: 'oaa', label: 'OAA', higherBetter: true, defaultWeight: 0.7, type: 'int' },
     { key: 'frv', label: 'FRV', higherBetter: true, defaultWeight: 0.7, type: 'int' },
     { key: 'drs', label: 'DRS', higherBetter: true, defaultWeight: 0.7, type: 'int' },
