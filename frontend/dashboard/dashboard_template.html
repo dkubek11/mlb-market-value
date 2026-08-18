@@ -1378,33 +1378,41 @@
   function posMarker(pos, rosterEntry) {
     const c = POSITION_COORDS[pos];
     const r = 26;
-    const record = rosterEntry ? findPlayerRecord(rosterEntry.id, pos) : null;
-    if (!record) {
+    if (!rosterEntry) {
       return `<g class="pos-marker">
         <circle cx="${c.x}" cy="${c.y}" r="${r}" fill="none" stroke="var(--border)" stroke-width="2" stroke-dasharray="4 4" />
         <text x="${c.x}" y="${c.y + 4}" text-anchor="middle" class="pos-tag" font-size="11">${pos}</text>
-        <text x="${c.x}" y="${c.y + r + 16}" text-anchor="middle" class="pos-score empty">no qualified player</text>
+        <text x="${c.x}" y="${c.y + r + 16}" text-anchor="middle" class="pos-score empty">no rostered player</text>
       </g>`;
     }
+    // rosterEntry is whoever logged the most playing time at this position,
+    // regardless of whether they clear the scoring-qualification bar (see
+    // ROSTER_BATTER_Q/ROSTER_PITCHER_Q in build_dashboard.py) -- always show
+    // that player. record is their full scored entry from allPlayers, which
+    // only exists if they also cleared the PA/IP + salary bar; when it
+    // doesn't, still render their name/photo but with a neutral ring and a
+    // "not qualified" label instead of a score.
+    const record = findPlayerRecord(rosterEntry.id, pos);
     const score = scoreLabel(record);
-    const fillHue = record.isPreArb ? 'var(--accent)' : (record.score >= 0 ? 'var(--good)' : 'var(--bad)');
-    const nameShort = record.name.length > 16 ? record.name.split(' ').pop() : record.name;
+    const fillHue = !record ? 'var(--border)' : record.isPreArb ? 'var(--accent)' : (record.score >= 0 ? 'var(--good)' : 'var(--bad)');
+    const nameShort = rosterEntry.name.length > 16 ? rosterEntry.name.split(' ').pop() : rosterEntry.name;
     // The colored ring still shows the same at-a-glance score signal it
     // always did; a real headshot (clipped to a slightly smaller circle, so
     // the ring reads as a border) replaces the initials inside it when one
     // is available.
     const photoR = r - 3;
-    const clipId = `avatar-clip-${record.id}`;
-    const avatarInner = record.headshot
+    const clipId = `avatar-clip-${rosterEntry.id}`;
+    const avatarInner = rosterEntry.headshot
       ? `<clipPath id="${clipId}"><circle cx="${c.x}" cy="${c.y}" r="${photoR}" /></clipPath>
-         <image href="${record.headshot}" x="${c.x - photoR}" y="${c.y - photoR}" width="${photoR * 2}" height="${photoR * 2}" clip-path="url(#${clipId})" preserveAspectRatio="xMidYMid slice" />`
-      : `<text x="${c.x}" y="${c.y + 5}" text-anchor="middle" class="pos-initials">${initials(record.name)}</text>`;
-    return `<g class="pos-marker" data-pid="${record.id}" data-pos="${pos}">
+         <image href="${rosterEntry.headshot}" x="${c.x - photoR}" y="${c.y - photoR}" width="${photoR * 2}" height="${photoR * 2}" clip-path="url(#${clipId})" preserveAspectRatio="xMidYMid slice" />`
+      : `<text x="${c.x}" y="${c.y + 5}" text-anchor="middle" class="pos-initials">${initials(rosterEntry.name)}</text>`;
+    const pidAttr = record ? ` data-pid="${record.id}"` : '';
+    return `<g class="pos-marker"${pidAttr} data-pos="${pos}">
       <circle class="pos-avatar-ring" cx="${c.x}" cy="${c.y}" r="${r}" fill="${fillHue}" fill-opacity="0.9" />
       ${avatarInner}
       <text x="${c.x}" y="${c.y - r - 8}" text-anchor="middle" class="pos-tag">${pos}</text>
       <text x="${c.x}" y="${c.y + r + 16}" text-anchor="middle" class="pos-name">${nameShort}</text>
-      <text x="${c.x}" y="${c.y + r + 30}" text-anchor="middle" class="pos-score ${score.cls}">${score.text}</text>
+      <text x="${c.x}" y="${c.y + r + 30}" text-anchor="middle" class="pos-score ${record ? score.cls : 'empty'}">${record ? score.text : 'not qualified'}</text>
     </g>`;
   }
 
@@ -1430,7 +1438,7 @@
     return `<tr class="diamond-row"><td colspan="4"><div class="diamond-panel">
       <div class="diamond-head">
         <h3>${team.name} — 2026 roster by position</h3>
-        <span class="diamond-sub">Top player by playing time at each spot (min. 150 PA / 50 IP)</span>
+        <span class="diamond-sub">Top player by playing time at each spot — "not qualified" means below the scoring minimum (150 PA / 50 IP)</span>
       </div>
       <div class="diamond-wrap">${renderDiamondSvg(team.abbr)}</div>
       <div class="diamond-legend">

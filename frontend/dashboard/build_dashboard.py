@@ -436,7 +436,11 @@ roster_all = pd.concat([roster_batters, roster_pitchers], ignore_index=True)
 rosters = {}
 for (team, pos), grp in roster_all.groupby(["team", "position"]):
     top = grp.loc[grp["pt"].idxmax()]
-    rosters.setdefault(team, {})[pos] = {"id": int(top.player_id), "name": top.full_name}
+    rosters.setdefault(team, {})[pos] = {
+        "id": int(top.player_id),
+        "name": top.full_name,
+        "headshot": get_headshot_data_uri(int(top.player_id)),
+    }
 
 print(f"[{season}] fetching current contract detail from FanGraphs RosterResource...")
 contracts = {}
