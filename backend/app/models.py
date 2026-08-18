@@ -127,6 +127,7 @@ class BatterStats(Base):
     chase_rate: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     whiff_rate: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     war: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    wrc_plus: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     source: Mapped[str] = mapped_column(String(20))
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

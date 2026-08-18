@@ -34,5 +34,6 @@ def fetch_plate_discipline(season: int) -> dict[int, dict]:
             "chase_rate": clean_nan(row.get("O-Swing%")),
             "whiff_rate": clean_nan(row.get("SwStr%")),
             "war": clean_nan(row.get("WAR")),
+            "wrc_plus": clean_nan(row.get("wRC+")),
         }
     return result

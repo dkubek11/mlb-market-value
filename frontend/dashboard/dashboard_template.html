@@ -610,7 +610,7 @@
   <div id="custom-view" style="display:none">
     <div class="custom-intro">
       <h2>Weights</h2>
-      <p>These weights are the site's single source of truth &mdash; every score, grade, and projected salary on Home, Players, Pre-Arbitration, Teams, and the player card is computed live from them. Each stat is measured as a <strong>z-score</strong> against the position average, multiplied by its weight, and summed into a raw performance subtotal. That subtotal is converted to a percentile within the position, then <strong>Pay</strong> below blends in how well-paid the player is: <code>Score = performance percentile − (Pay weight × salary percentile)</code>. Pre-arbitration players are paid near the league minimum by rule, so they skip the pay adjustment entirely and their Score is just their performance percentile.</p>
+      <p>These weights are the site's single source of truth &mdash; every score, grade, and projected salary on Home, Players, Pre-Arbitration, Teams, and the player card is computed live from them. Each stat is measured as a <strong>z-score</strong> against the position average, multiplied by its weight, and summed into a raw performance subtotal. That subtotal is converted to a percentile within the position, then <strong>Pay</strong> below blends in how well-paid the player is: <code>Score = performance percentile − (Pay weight × salary percentile)</code>. Pre-arbitration players are paid near the league minimum by rule, so they skip the pay adjustment entirely and their Score is just their performance percentile. Any weight you change here is saved in this browser and stays applied the next time you visit.</p>
     </div>
 
     <div class="weight-group">
@@ -1506,6 +1506,11 @@
     { key: 'oaa', label: 'OAA', higherBetter: true, defaultWeight: 0.7, type: 'int' },
     { key: 'frv', label: 'FRV', higherBetter: true, defaultWeight: 0.7, type: 'int' },
     { key: 'drs', label: 'DRS', higherBetter: true, defaultWeight: 0.7, type: 'int' },
+    // Real, park/league-adjusted run production (100 = average) -- the one
+    // stat in this composite driven by actual outcomes rather than quality-
+    // of-contact process metrics, so a hit-tool-over-exit-velo player (or an
+    // unlucky quality-of-contact one) isn't graded purely on process.
+    { key: 'wrc_plus', label: 'wRC+', higherBetter: true, defaultWeight: 2.0, type: 'int' },
   ];
   const PITCHER_STAT_CONFIG = [
     { key: 'xera', label: 'xERA', higherBetter: false, defaultWeight: 2.0, type: 'rate2' },
@@ -1528,6 +1533,25 @@
   PITCHER_STAT_CONFIG.forEach(s => { pitchingWeights[s.key] = s.defaultWeight; });
   const DEFAULT_PAY_WEIGHT = 1.0;
   let payWeight = DEFAULT_PAY_WEIGHT;
+
+  // Custom weights persist in this browser across visits (localStorage, not
+  // the server) -- each slider change re-saves the full set. A stat added
+  // after a user's last visit (e.g. a saved set predating wRC+) just keeps
+  // its default since Object.assign only overwrites keys the saved set has.
+  const WEIGHTS_STORAGE_KEY = 'mlbMarketValue.customWeights.v1';
+  function saveWeights() {
+    try {
+      localStorage.setItem(WEIGHTS_STORAGE_KEY, JSON.stringify({ battingWeights, pitchingWeights, payWeight }));
+    } catch { /* private browsing / storage disabled -- weights just won't persist */ }
+  }
+  try {
+    const saved = JSON.parse(localStorage.getItem(WEIGHTS_STORAGE_KEY) || 'null');
+    if (saved) {
+      Object.assign(battingWeights, saved.battingWeights);
+      Object.assign(pitchingWeights, saved.pitchingWeights);
+      if (typeof saved.payWeight === 'number') payWeight = saved.payWeight;
+    }
+  } catch { /* corrupt/old saved shape -- fall back to defaults already set above */ }
 
   // Separate composite used ONLY to match pre-arb/arb-eligible players
   // against each other in directArbCompSalary -- real arbitration hearings
@@ -2220,7 +2244,7 @@
     document.getElementById(containerId).innerHTML = statConfig.map(s => `
       <div class="weight-row">
         <span class="weight-label">${s.label}<span class="direction">${s.higherBetter ? 'higher is better' : 'lower is better'}</span></span>
-        <input type="range" min="0" max="3" step="0.1" value="${s.defaultWeight}" data-stat="${s.key}" />
+        <input type="range" min="0" max="3" step="0.1" value="${weightsObj[s.key]}" data-stat="${s.key}" />
         <span class="weight-value" id="weight-val-${containerId}-${s.key}">${weightsObj[s.key].toFixed(1)}</span>
       </div>
     `).join('');
@@ -2235,6 +2259,7 @@
       const key = input.dataset.stat;
       weightsObj[key] = parseFloat(input.value);
       document.getElementById('weight-val-' + containerId + '-' + key).textContent = weightsObj[key].toFixed(1);
+      saveWeights();
       recomputeAll();
       renderAll();
     });
@@ -2245,12 +2270,14 @@
   document.getElementById('reset-bat-weights').addEventListener('click', () => {
     BATTER_STAT_CONFIG.forEach(s => { battingWeights[s.key] = s.defaultWeight; });
     buildWeightPanel('weight-panel-bat', BATTER_STAT_CONFIG, battingWeights);
+    saveWeights();
     recomputeAll();
     renderAll();
   });
   document.getElementById('reset-pit-weights').addEventListener('click', () => {
     PITCHER_STAT_CONFIG.forEach(s => { pitchingWeights[s.key] = s.defaultWeight; });
     buildWeightPanel('weight-panel-pit', PITCHER_STAT_CONFIG, pitchingWeights);
+    saveWeights();
     recomputeAll();
     renderAll();
   });
@@ -2273,12 +2300,14 @@
     if (!input) return;
     payWeight = parseFloat(input.value);
     document.getElementById('weight-val-pay').textContent = payWeight.toFixed(1);
+    saveWeights();
     recomputeAll();
     renderAll();
   });
   document.getElementById('reset-pay-weight').addEventListener('click', () => {
     payWeight = DEFAULT_PAY_WEIGHT;
     buildPayPanel();
+    saveWeights();
     recomputeAll();
     renderAll();
   });

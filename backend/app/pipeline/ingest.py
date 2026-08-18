@@ -295,6 +295,7 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
                 chase_rate=pd_row.get("chase_rate"),
                 whiff_rate=pd_row.get("whiff_rate"),
                 war=pd_row.get("war"),
+                wrc_plus=pd_row.get("wrc_plus"),
                 source=SOURCE_STATS,
                 scraped_at=now,
             )

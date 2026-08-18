@@ -45,7 +45,7 @@ LEAGUE_MINIMUM = LEAGUE_MINIMUM_BY_SEASON.get(season, LEAGUE_MINIMUM_BY_SEASON[m
 BATTER_STATS = ["ba", "obp", "slg", "xwoba", "xba", "xslg", "hr", "rbi", "sb",
                  "barrel_rate", "hard_hit_rate", "sprint_speed",
                  "chase_rate", "whiff_rate", "k_rate", "bb_rate", "oaa", "frv", "drs",
-                 "hits", "games", "war"]
+                 "hits", "games", "war", "wrc_plus"]
 PITCHER_STATS = ["era", "whip", "fip", "xera", "k_9", "bb_9",
                   "hard_hit_rate_against", "barrel_rate_against", "xba_against",
                   "avg_exit_velo_against", "chase_rate", "whiff_rate", "k_rate", "bb_rate",
@@ -59,7 +59,7 @@ BATTER_Q = text("""
            bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
            bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
            fs.oaa, fs.frv, fs.drs,
-           bs.hits, bs.games, bs.war
+           bs.hits, bs.games, bs.war, bs.wrc_plus
     FROM batter_stats bs
     JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
     JOIN players p ON p.player_id = bs.player_id
@@ -102,7 +102,7 @@ HISTORY_BATTER_Q = text("""
            bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
            bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
            fs.oaa, fs.frv, fs.drs,
-           bs.hits, bs.games, bs.war
+           bs.hits, bs.games, bs.war, bs.wrc_plus
     FROM batter_stats bs
     JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
     JOIN teams t ON t.team_id = ps.team_id
