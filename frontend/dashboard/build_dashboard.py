@@ -22,6 +22,8 @@ from app.pipeline.projections import (
 )
 from app.pipeline.comp_projections import compute_batter_comp_projections, compute_pitcher_comp_projections
 from app.pipeline.fangraphs_salary import TEAM_SLUG_TO_ABBREVIATION, fetch_team_contracts
+from app.pipeline import mlbtr_arbitration
+from app.pipeline.ingest import _normalize_name
 from headshots import get_headshot_data_uri
 
 HERE = __import__("pathlib").Path(__file__).parent
@@ -30,6 +32,15 @@ MIN_BATTER_PA = 150
 MIN_IP_SP = 50
 MIN_IP_RP = 25
 POS_MAP = {"FIRST_BASE": "1B", "SECOND_BASE": "2B", "THIRD_BASE": "3B"}
+
+# Real CBA-set league minimums (Article VI, 2022-2026 agreement) -- used only
+# to fill in a real dollar figure for rostered players verified as pre-arb
+# (see _fill_verified_pre_arb below) who FanGraphs RosterResource has no
+# salary row for at all. The CBA expires after 2026 with no confirmed
+# schedule beyond it, so an unknown future season falls back to the latest
+# known value rather than guessing at an escalation.
+LEAGUE_MINIMUM_BY_SEASON = {2022: 700_000, 2023: 720_000, 2024: 740_000, 2025: 760_000, 2026: 780_000}
+LEAGUE_MINIMUM = LEAGUE_MINIMUM_BY_SEASON.get(season, LEAGUE_MINIMUM_BY_SEASON[max(LEAGUE_MINIMUM_BY_SEASON)])
 
 BATTER_STATS = ["ba", "obp", "slg", "xwoba", "xba", "xslg", "hr", "rbi", "sb",
                  "barrel_rate", "hard_hit_rate", "sprint_speed",
@@ -53,7 +64,7 @@ BATTER_Q = text("""
     JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
     JOIN players p ON p.player_id = bs.player_id
     JOIN teams t ON t.team_id = ps.team_id
-    JOIN player_salaries sal ON sal.player_id = bs.player_id AND sal.season = bs.season
+    LEFT JOIN player_salaries sal ON sal.player_id = bs.player_id AND sal.season = bs.season
     LEFT JOIN fielding_stats fs ON fs.player_id=bs.player_id AND fs.season=bs.season
     WHERE bs.season=:season AND bs.pa >= :min_pa AND bs.xwoba IS NOT NULL
 """)
@@ -70,7 +81,7 @@ PITCHER_Q = text("""
     JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
     JOIN players p ON p.player_id = ps_s.player_id
     JOIN teams t ON t.team_id = ps.team_id
-    JOIN player_salaries sal ON sal.player_id = ps_s.player_id AND sal.season = ps_s.season
+    LEFT JOIN player_salaries sal ON sal.player_id = ps_s.player_id AND sal.season = ps_s.season
     WHERE ps_s.season=:season AND ps_s.fip IS NOT NULL
       AND (
         (ps.position = 'SP' AND ps_s.ip >= :min_ip_sp) OR
@@ -164,9 +175,68 @@ ARB_HISTORY_PITCHER_Q = text(f"""
 TEAMS_Q = text("SELECT team_id, abbreviation, name, league, division FROM teams")
 PAYROLL_Q = text("SELECT team_id, SUM(salary) AS payroll FROM player_salaries WHERE season=:season GROUP BY team_id")
 
+# Players who clear the PA/IP bar but have no player_salaries row at all --
+# RosterResource doesn't itemize every rookie-minimum player, so a real chunk
+# of qualifying playing time (this season: pitchers with 60-90+ IP, batters
+# with 200+ PA) was silently falling out of scoring entirely. Most of these
+# genuinely are pre-arb (whose real salary barely matters for scoring anyway
+# -- see the isPreArb path in dashboard_template.html, which ignores pay and
+# scores on performance alone), but "missing a salary row" isn't proof of
+# that by itself, so this cross-checks two independent real signals before
+# assuming it: (1) MLBTR's own CURRENT-season arbitration tracker -- if a
+# missing-salary player is on it, they're confirmed arb-eligible this year,
+# not pre-arb, and (2) a real settled arb_outcomes record from any EARLIER
+# season -- service time only accrues, so a player who already had a case
+# can't have reverted to pre-arb. Anyone flagged by either signal, or with no
+# debut_date to estimate service time from, or whose apparent service (years
+# since debut) is already 3+, is left out entirely rather than guessed at --
+# same as today, just for a now-understood reason instead of a silent one.
+print(f"[{season}] cross-checking missing-salary players against arb signals...")
+try:
+    _mlbtr_names = mlbtr_arbitration.fetch_service_times(season)
+except Exception as exc:
+    print(f"  (MLBTR arbitration tracker unavailable: {exc})")
+    _mlbtr_names = {}
+_normalized_mlbtr_names = {_normalize_name(n) for n in _mlbtr_names}
+_prior_arb_ids = set(
+    pd.read_sql(
+        text("SELECT DISTINCT player_id FROM arb_outcomes WHERE platform_season < :season"),
+        engine, params={"season": season},
+    )["player_id"]
+)
+
+
+def _fill_verified_pre_arb(df: pd.DataFrame, label: str) -> pd.DataFrame:
+    missing = df[df["salary"].isna()]
+    if missing.empty:
+        return df
+
+    normalized_name = missing["full_name"].map(_normalize_name)
+    service_years = missing["debut_date"].apply(lambda d: season - d.year if pd.notna(d) else None)
+    flagged_arb_eligible = normalized_name.isin(_normalized_mlbtr_names) | missing["player_id"].isin(_prior_arb_ids)
+    verified = ~flagged_arb_eligible & service_years.notna() & (service_years < 3)
+
+    verified_idx = missing.index[verified]
+    flagged_idx = missing.index[flagged_arb_eligible]
+    print(f"  {label} missing salary: {len(missing)} -- {len(verified_idx)} verified pre-arb "
+          f"(filled at {season} league minimum ${LEAGUE_MINIMUM:,}), {len(flagged_idx)} flagged as "
+          f"arb-eligible with an unmatched real salary (excluded), "
+          f"{len(missing) - len(verified_idx) - len(flagged_idx)} excluded (insufficient evidence)")
+
+    df.loc[verified_idx, "salary"] = LEAGUE_MINIMUM
+    df.loc[verified_idx, "aav"] = LEAGUE_MINIMUM
+    df.loc[verified_idx, "contract_type"] = "Pre-Arbitration (est.)"
+    # service_time stays null -- to_record()'s existing fallback (years since
+    # debut, serviceYearsExact=False) already computes the same proxy honestly;
+    # setting it here would mislabel it as MLB's real, exact accrued-days figure.
+    return df.drop(index=missing.index.difference(verified_idx))
+
+
 print(f"[{season}] querying qualified batters/pitchers...")
 batters = pd.read_sql(BATTER_Q, engine, params={"season": season, "min_pa": MIN_BATTER_PA})
 pitchers = pd.read_sql(PITCHER_Q, engine, params={"season": season, "min_ip_sp": MIN_IP_SP, "min_ip_rp": MIN_IP_RP})
+batters = _fill_verified_pre_arb(batters, "batters")
+pitchers = _fill_verified_pre_arb(pitchers, "pitchers")
 batters["position"] = batters["position"].map(lambda p: POS_MAP.get(p, p))
 batters["is_pre_arb"] = batters["contract_type"].apply(_is_pre_arb)
 pitchers["is_pre_arb"] = pitchers["contract_type"].apply(_is_pre_arb)
