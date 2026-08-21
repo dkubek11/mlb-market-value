@@ -409,18 +409,40 @@
   .history-table td.num, .history-table th.num { text-align: right; }
   .history-table tbody tr:not(:last-child) td { border-bottom: 1px solid var(--border); }
   .history-note { font-size: 10px; color: var(--ink-dim); line-height: 1.5; text-align: left; margin-bottom: 4px; }
-  .card-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: left; margin-bottom: 4px; }
-  .card-stats-grid-3 { grid-template-columns: repeat(3, 1fr); }
-  .card-stat { background: var(--surface-2); border-radius: 6px; padding: 8px 10px; }
   .card-stat-label {
     font-family: "Courier Prime", monospace; font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-dim);
   }
-  .card-stat-value {
-    font-size: 15px; font-weight: 700; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; margin-top: 1px;
+
+  /* --- Percentile bars (Statcast-style: blue=poor, gray=average, red=great) --- */
+  .pctl-legend {
+    display: flex; justify-content: space-between; align-items: center; margin: 2px 0 10px;
+    font-family: "Courier Prime", monospace; font-size: 9px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
   }
-  .card-stat-delta {
-    font-size: 10px; font-weight: 600; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; margin-top: 2px;
+  .pctl-legend span:nth-child(1) { color: #5b84c4; }
+  .pctl-legend span:nth-child(2) { color: var(--ink-dim); }
+  .pctl-legend span:nth-child(3) { color: #c94a3d; }
+  .pctl-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; text-align: left; }
+  .pctl-label {
+    flex: 0 0 76px; font-family: "Courier Prime", monospace; font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink-dim); line-height: 1.2;
   }
+  .pctl-track {
+    position: relative; flex: 1 1 auto; height: 8px; border-radius: 4px; background: var(--surface-2);
+    border: 1px solid var(--border);
+  }
+  .pctl-fill { position: absolute; top: -1px; left: -1px; bottom: -1px; border-radius: 4px; opacity: 0.55; }
+  .pctl-badge {
+    position: absolute; top: 50%; width: 21px; height: 21px; border-radius: 50%;
+    transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;
+    font-family: "Courier Prime", monospace; font-size: 9.5px; font-weight: 700; color: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  .pctl-value {
+    flex: 0 0 42px; text-align: right; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 11px; font-weight: 700; color: var(--ink);
+  }
+  .pctl-section-title { margin-top: 14px; }
+  .pctl-section-title:first-child { margin-top: 0; }
 
   /* --- Custom weighted score --- */
   .custom-intro { max-width: 720px; margin-bottom: 22px; }
@@ -777,16 +799,6 @@
     if (type === 'int') return Math.round(v).toString();
     return String(v);
   }
-  function fmtDelta(type, d) {
-    const sign = d >= 0 ? '+' : '−';
-    const abs = Math.abs(d);
-    if (type === 'avg3') return sign + abs.toFixed(3).replace(/^0\./, '.');
-    if (type === 'rate2') return sign + abs.toFixed(2);
-    if (type === 'pct1') return sign + abs.toFixed(1) + ' pts';
-    if (type === 'velo1') return sign + abs.toFixed(1);
-    if (type === 'int') return sign + Math.round(abs).toString();
-    return sign + abs;
-  }
   function gradeFor(pct) {
     if (pct >= 99) return 'S';
     if (pct >= 90) return 'A+';
@@ -839,25 +851,55 @@
     return `<span class="regression-tag ${arrow.cls}" title="${title}">${arrow.symbol}</span>`;
   }
 
-  function statGrid(record, statSet) {
-    const posStats = positionStats[record.position] || {};
-    return statSet.map(s => {
-      const val = record.stats[s.key];
-      if (val == null) return '';
-      const avgEntry = posStats[s.key];
-      const avg = avgEntry ? avgEntry.mean : null;
-      let deltaHtml = '';
-      if (avg != null) {
-        const delta = val - avg;
-        const isGood = s.higherBetter ? delta >= 0 : delta <= 0;
-        deltaHtml = `<div class="card-stat-delta ${isGood ? 'good' : 'bad'}">${fmtDelta(s.type, delta)} vs ${record.position} avg</div>`;
-      }
-      return `<div class="card-stat">
-        <div class="card-stat-label">${s.label}</div>
-        <div class="card-stat-value">${fmtStatValue(s.type, val)}</div>
-        ${deltaHtml}
-      </div>`;
+  // Statcast-style percentile bars: same position-relative z-score every
+  // other composite on the site uses (positionStats mean/std), turned into a
+  // 1-99 percentile via the normal-CDF approximation already used elsewhere
+  // for historical grading (normalCdf, defined below) -- not a fresh rank
+  // pass per stat, just a different lens on the same underlying z.
+  function statPercentile(record, key, higherBetter) {
+    const val = record.stats[key];
+    const ps = (positionStats[record.position] || {})[key];
+    if (val == null || !ps || !(ps.std > 0)) return null;
+    const rawZ = (val - ps.mean) / ps.std;
+    const z = higherBetter ? rawZ : -rawZ;
+    return Math.max(1, Math.min(99, Math.round(normalCdf(z) * 100)));
+  }
+
+  // Blue (poor) -> light gray (average) -> red (great), matching Baseball
+  // Savant's percentile-ranking convention -- deliberately not the site's
+  // own --good/--bad green/red pair, since this widget mirrors that specific
+  // reference visual rather than the site's usual under/overpaid coloring.
+  const PCTL_COLOR_STOPS = [[0, [91, 132, 196]], [50, [172, 172, 164]], [100, [201, 74, 61]]];
+  function percentileColor(pct) {
+    const [lo, hi] = pct <= 50 ? [PCTL_COLOR_STOPS[0], PCTL_COLOR_STOPS[1]] : [PCTL_COLOR_STOPS[1], PCTL_COLOR_STOPS[2]];
+    const t = (pct - lo[0]) / (hi[0] - lo[0]);
+    const rgb = lo[1].map((c, i) => Math.round(c + (hi[1][i] - c) * t));
+    return `rgb(${rgb.join(',')})`;
+  }
+
+  function percentileRow(label, pct, valueText) {
+    if (pct == null) return '';
+    const color = percentileColor(pct);
+    return `<div class="pctl-row">
+      <span class="pctl-label">${label}</span>
+      <div class="pctl-track">
+        <div class="pctl-fill" style="width:${pct}%; background:${color};"></div>
+        <div class="pctl-badge" style="left:${pct}%; background:${color};">${pct}</div>
+      </div>
+      <span class="pctl-value">${valueText}</span>
+    </div>`;
+  }
+
+  function percentileSection(title, statList, record) {
+    const rows = statList.map(s => {
+      const pct = statPercentile(record, s.key, s.higherBetter);
+      if (pct == null) return '';
+      return percentileRow(s.label, pct, fmtStatValue(s.type, record.stats[s.key]));
     }).join('');
+    if (!rows) return '';
+    return `<div class="card-section-title pctl-section-title">${title}</div>
+      <div class="pctl-legend"><span>&larr; Poor</span><span>Average</span><span>Great &rarr;</span></div>
+      ${rows}`;
   }
 
   const CURRENT_SEASON = 2026;
@@ -1017,17 +1059,13 @@
     if (!record) return;
     const colors = teamColors[record.team] || ['#3a4a42', '#1a231e'];
     const grade = gradeFor(record.compPct);
-    const statSet = record.isBatter ? BATTER_STATS : PITCHER_STATS;
+    // sprint_speed splits out into its own "Running" section (Statcast-style
+    // layout) rather than sitting inside the main Batting percentile list.
+    const statSet = record.isBatter ? BATTER_STATS.filter(s => s.key !== 'sprint_speed') : PITCHER_STATS;
+    const runningStats = record.isBatter ? BATTER_STATS.filter(s => s.key === 'sprint_speed') : [];
 
-    let fieldingHtml = '';
-    const hasFielding = record.isBatter && FIELDING_STATS.some(s => record.stats[s.key] != null);
-    if (hasFielding) {
-      fieldingHtml = `
-        <div class="card-section-title">Fielding vs. ${record.position} average</div>
-        <div class="card-stats-grid card-stats-grid-3">
-          ${statGrid(record, FIELDING_STATS)}
-        </div>`;
-    }
+    const fieldingHtml = record.isBatter ? percentileSection('Fielding', FIELDING_STATS, record) : '';
+    const runningHtml = percentileSection('Running', runningStats, record);
 
     let regressionHtml = '';
     const arrow = regressionArrow(record);
@@ -1141,9 +1179,9 @@
           ${contractHtml}
           ${valueHtml}
           ${outlookHtml}
-          <div class="card-section-title">${record.isBatter ? 'Hitting' : 'Pitching'} vs. ${record.position} average</div>
-          <div class="card-stats-grid">${statGrid(record, statSet)}</div>
+          ${percentileSection(record.isBatter ? 'Batting' : 'Pitching', statSet, record)}
           ${fieldingHtml}
+          ${runningHtml}
           ${historyHtml}
         </div>
       </div>
