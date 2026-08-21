@@ -1363,7 +1363,12 @@
   // Roughly true-to-position layout on a 0 0 640 620 field, home plate at bottom.
   const POSITION_COORDS = {
     C:  { x: 320, y: 522 }, SP: { x: 320, y: 430 }, '1B': { x: 445, y: 428 },
-    '2B': { x: 320, y: 328 }, '3B': { x: 195, y: 428 }, SS: { x: 258, y: 372 },
+    // 2B's realistic fielding spot is shallow right of the bag, not standing
+    // on it -- mirrors SS's offset (which sits shallow left of the bag,
+    // toward 3B) onto the 1B side instead of using the bag's own coordinate,
+    // which used to leave 2B floating alone at the top of the diamond,
+    // detached from the rest of the infield cluster.
+    '2B': { x: 382, y: 372 }, '3B': { x: 195, y: 428 }, SS: { x: 258, y: 372 },
     LF: { x: 140, y: 208 }, CF: { x: 320, y: 128 }, RF: { x: 500, y: 208 },
     DH: { x: 566, y: 556 }, RP: { x: 74, y: 556 },
   };
