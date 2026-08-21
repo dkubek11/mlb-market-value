@@ -186,6 +186,7 @@
     display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px;
     background: var(--surface-2); color: var(--ink-dim); font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
   }
+  .team-logo { vertical-align: -3px; margin-right: 5px; object-fit: contain; }
 
   .bar-cell { display: flex; align-items: center; gap: 8px; }
   .bar-track { position: relative; width: 84px; height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
@@ -680,6 +681,11 @@
   // players get a real raise, not just legal-floor protection from a cut.
   const ARB_RAISE_FLOOR_PCT = DATA.arbRaiseFloorPct || 0;
   const teamNameByAbbr = Object.fromEntries(teams.map(t => [t.abbr, t.name]));
+  const teamLogoByAbbr = Object.fromEntries(teams.map(t => [t.abbr, t.logo]));
+  function teamLogoImg(abbr, sizePx) {
+    const logo = teamLogoByAbbr[abbr];
+    return logo ? `<img class="team-logo" src="${logo}" alt="" width="${sizePx}" height="${sizePx}" />` : '';
+  }
   const marketCount = allPlayers.filter(p => !p.isPreArb).length;
   const preArbCount = allPlayers.filter(p => p.isPreArb).length;
   function matchesTeamQuery(p, q) {
@@ -1130,7 +1136,7 @@
         </div>
         <div class="card-body">
           <h2 class="card-name">${record.name}</h2>
-          <div class="card-subline">${record.position} · ${teamNameByAbbr[record.team] || record.team}</div>
+          <div class="card-subline">${record.position} · ${teamLogoImg(record.team, 15)}${teamNameByAbbr[record.team] || record.team}</div>
           ${regressionHtml}
           ${contractHtml}
           ${valueHtml}
@@ -1256,7 +1262,7 @@
     const maxAbs = 100;
     document.getElementById('player-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
       <tr class="row-toggle" data-idx="${i}">
-        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
         <td class="num">${fmtMoney(p.salary)}</td>
         <td class="num">${p.compPct.toFixed(1)}</td>
         <td class="num">${p.salPct.toFixed(1)}</td>
@@ -1317,7 +1323,7 @@
     const maxSurplus = Math.max(...allSurplus, 1);
     document.getElementById('rookie-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
       <tr class="row-toggle" data-idx="${i}">
-        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
         <td class="num">${fmtMoney(p.salary)}</td>
         <td class="num">${p.compPct.toFixed(1)}</td>
         <td class="num">${fmtMoney(p.projectedSalary)}</td>
@@ -1437,7 +1443,7 @@
   function renderDiamondPanel(team) {
     return `<tr class="diamond-row"><td colspan="4"><div class="diamond-panel">
       <div class="diamond-head">
-        <h3>${team.name} — 2026 roster by position</h3>
+        <h3>${teamLogoImg(team.abbr, 24)}${team.name} — 2026 roster by position</h3>
         <span class="diamond-sub">Top player by playing time at each spot — "not qualified" means below the scoring minimum (150 PA / 50 IP)</span>
       </div>
       <div class="diamond-wrap">${renderDiamondSvg(team.abbr)}</div>
@@ -1467,7 +1473,7 @@
       const open = expandedTeam === t.abbr;
       const row = `
       <tr class="row-toggle" data-abbr="${t.abbr}">
-        <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${t.name}</span><span class="team-tag">${t.abbr}</span></div></td>
+        <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${teamLogoImg(t.abbr, 18)}${t.name}</span><span class="team-tag">${t.abbr}</span></div></td>
         <td>${t.division}</td>
         <td class="num">${fmtMoney(t.payroll)}</td>
         <td class="num">${valueBar(t.avgScore, maxAbs)}</td>
@@ -2371,7 +2377,7 @@
       const row = `
       <tr class="row-toggle" data-idx="${i}">
         <td class="num">${i + 1}</td>
-        <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}</span><span class="team-tag">${p.team}</span></div></td>
+        <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team}</span></div></td>
         <td><span class="pos-pill">${p.position}</span></td>
         <td class="num ${p.score >= 0 ? 'good' : 'bad'}">${fmtSigned(p.score)}</td>
         <td class="num">${p.compPct.toFixed(1)}</td>

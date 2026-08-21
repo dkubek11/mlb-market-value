@@ -23,3 +23,7 @@ backend/backtest_results.csv
 # Local cache of MLB headshot images (see fetch_headshots.py) -- binary
 # blobs, not source; regenerates itself from MLB's own CDN on first use.
 frontend/dashboard/headshots_cache/
+
+# Local cache of MLB team logo SVGs (see logos.py) -- binary blobs, not
+# source; regenerates itself from MLB's own CDN on first use.
+frontend/dashboard/logos_cache/
