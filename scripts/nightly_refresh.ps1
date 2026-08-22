@@ -15,7 +15,7 @@
 # kills the script on ordinary stderr chatter -- like pybaseball's tqdm
 # progress bars, which write to stderr and aren't actual errors.
 
-$RepoRoot = "C:\Users\dylan\Desktop\mlb-market-value"
+$RepoRoot = "C:\Users\dylan\sports-analytics\mlb-market-value"
 $Backend = Join-Path $RepoRoot "backend"
 $Dashboard = Join-Path $RepoRoot "frontend\dashboard"
 $Validate = Join-Path $RepoRoot "scripts\validate"

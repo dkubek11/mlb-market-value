@@ -11,7 +11,7 @@ import datetime
 import json
 import sys
 
-sys.path.insert(0, r"C:\Users\dylan\Desktop\mlb-market-value\backend")
+sys.path.insert(0, r"C:\Users\dylan\sports-analytics\mlb-market-value\backend")
 import pandas as pd
 from sqlalchemy import text, bindparam
 from app.db import engine
