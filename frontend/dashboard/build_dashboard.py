@@ -28,6 +28,7 @@ from app.pipeline.fangraphs_salary import TEAM_SLUG_TO_ABBREVIATION, fetch_team_
 from app.pipeline import mlbtr_arbitration
 from app.pipeline.ingest import _normalize_name
 from headshots import get_headshot_data_uri
+from logos import get_team_logo_data_uri
 
 HERE = __import__("pathlib").Path(__file__).parent
 season = int(sys.argv[1]) if len(sys.argv) > 1 else 2026
@@ -35,7 +36,6 @@ MIN_BATTER_PA = 150
 MIN_IP_SP = 50
 MIN_IP_RP = 25
 POS_MAP = {"FIRST_BASE": "1B", "SECOND_BASE": "2B", "THIRD_BASE": "3B"}
-
 
 def _as_date(value):
     """SQLite returns DATE columns as ISO-8601 strings through pandas, while
@@ -522,6 +522,7 @@ teams_out = [
         "league": r.league,
         "division": r.division,
         "payroll": round(float(r.payroll)) if pd.notna(r.payroll) else 0,
+        "logo": get_team_logo_data_uri(int(r.team_id)),
     }
     for r in teams_df.itertuples()
 ]

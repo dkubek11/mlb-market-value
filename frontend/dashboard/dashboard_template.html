@@ -183,6 +183,7 @@
     display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px;
     background: var(--surface-2); color: var(--ink-dim); font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
   }
+  .team-logo { vertical-align: -3px; margin-right: 5px; object-fit: contain; }
 
   .bar-cell { display: flex; align-items: center; gap: 8px; }
   .bar-track { position: relative; width: 84px; height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
@@ -506,18 +507,40 @@
   .history-table td.num, .history-table th.num { text-align: right; }
   .history-table tbody tr:not(:last-child) td { border-bottom: 1px solid var(--border); }
   .history-note { font-size: 10px; color: var(--ink-dim); line-height: 1.5; text-align: left; margin-bottom: 4px; }
-  .card-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: left; margin-bottom: 4px; }
-  .card-stats-grid-3 { grid-template-columns: repeat(3, 1fr); }
-  .card-stat { background: var(--surface-2); border-radius: 6px; padding: 8px 10px; }
   .card-stat-label {
     font-family: "Courier Prime", monospace; font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-dim);
   }
-  .card-stat-value {
-    font-size: 15px; font-weight: 700; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; margin-top: 1px;
+
+  /* --- Percentile bars (Statcast-style: blue=poor, gray=average, red=great) --- */
+  .pctl-legend {
+    display: flex; justify-content: space-between; align-items: center; margin: 2px 0 10px;
+    font-family: "Courier Prime", monospace; font-size: 9px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
   }
-  .card-stat-delta {
-    font-size: 10px; font-weight: 600; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; margin-top: 2px;
+  .pctl-legend span:nth-child(1) { color: #5b84c4; }
+  .pctl-legend span:nth-child(2) { color: var(--ink-dim); }
+  .pctl-legend span:nth-child(3) { color: #c94a3d; }
+  .pctl-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; text-align: left; }
+  .pctl-label {
+    flex: 0 0 76px; font-family: "Courier Prime", monospace; font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink-dim); line-height: 1.2;
   }
+  .pctl-track {
+    position: relative; flex: 1 1 auto; height: 8px; border-radius: 4px; background: var(--surface-2);
+    border: 1px solid var(--border);
+  }
+  .pctl-fill { position: absolute; top: -1px; left: -1px; bottom: -1px; border-radius: 4px; opacity: 0.55; }
+  .pctl-badge {
+    position: absolute; top: 50%; width: 21px; height: 21px; border-radius: 50%;
+    transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;
+    font-family: "Courier Prime", monospace; font-size: 9.5px; font-weight: 700; color: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  .pctl-value {
+    flex: 0 0 42px; text-align: right; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 11px; font-weight: 700; color: var(--ink);
+  }
+  .pctl-section-title { margin-top: 14px; }
+  .pctl-section-title:first-child { margin-top: 0; }
 
   /* --- Custom weighted score --- */
   .custom-intro { max-width: 720px; margin-bottom: 22px; }
@@ -893,6 +916,11 @@
   // players get a real raise, not just legal-floor protection from a cut.
   const ARB_RAISE_FLOOR_PCT = DATA.arbRaiseFloorPct || 0;
   const teamNameByAbbr = Object.fromEntries(teams.map(t => [t.abbr, t.name]));
+  const teamLogoByAbbr = Object.fromEntries(teams.map(t => [t.abbr, t.logo]));
+  function teamLogoImg(abbr, sizePx) {
+    const logo = teamLogoByAbbr[abbr];
+    return logo ? `<img class="team-logo" src="${logo}" alt="" width="${sizePx}" height="${sizePx}" />` : '';
+  }
   const marketCount = allPlayers.filter(p => !p.isPreArb).length;
   const preArbCount = allPlayers.filter(p => p.isPreArb).length;
   function matchesTeamQuery(p, q) {
@@ -1044,16 +1072,6 @@
     if (type === 'int') return Math.round(v).toString();
     return String(v);
   }
-  function fmtDelta(type, d) {
-    const sign = d >= 0 ? '+' : '−';
-    const abs = Math.abs(d);
-    if (type === 'avg3') return sign + abs.toFixed(3).replace(/^0\./, '.');
-    if (type === 'rate2') return sign + abs.toFixed(2);
-    if (type === 'pct1') return sign + abs.toFixed(1) + ' pts';
-    if (type === 'velo1') return sign + abs.toFixed(1);
-    if (type === 'int') return sign + Math.round(abs).toString();
-    return sign + abs;
-  }
   function gradeFor(pct) {
     if (pct >= 99) return 'S';
     if (pct >= 90) return 'A+';
@@ -1106,25 +1124,55 @@
     return `<span class="regression-tag ${arrow.cls}" title="${title}">${arrow.symbol}</span>`;
   }
 
-  function statGrid(record, statSet) {
-    const posStats = positionStats[record.position] || {};
-    return statSet.map(s => {
-      const val = record.stats[s.key];
-      if (val == null) return '';
-      const avgEntry = posStats[s.key];
-      const avg = avgEntry ? avgEntry.mean : null;
-      let deltaHtml = '';
-      if (avg != null) {
-        const delta = val - avg;
-        const isGood = s.higherBetter ? delta >= 0 : delta <= 0;
-        deltaHtml = `<div class="card-stat-delta ${isGood ? 'good' : 'bad'}">${fmtDelta(s.type, delta)} vs ${record.position} avg</div>`;
-      }
-      return `<div class="card-stat">
-        <div class="card-stat-label">${s.label}</div>
-        <div class="card-stat-value">${fmtStatValue(s.type, val)}</div>
-        ${deltaHtml}
-      </div>`;
+  // Statcast-style percentile bars: same position-relative z-score every
+  // other composite on the site uses (positionStats mean/std), turned into a
+  // 1-99 percentile via the normal-CDF approximation already used elsewhere
+  // for historical grading (normalCdf, defined below) -- not a fresh rank
+  // pass per stat, just a different lens on the same underlying z.
+  function statPercentile(record, key, higherBetter) {
+    const val = record.stats[key];
+    const ps = (positionStats[record.position] || {})[key];
+    if (val == null || !ps || !(ps.std > 0)) return null;
+    const rawZ = (val - ps.mean) / ps.std;
+    const z = higherBetter ? rawZ : -rawZ;
+    return Math.max(1, Math.min(99, Math.round(normalCdf(z) * 100)));
+  }
+
+  // Blue (poor) -> light gray (average) -> red (great), matching Baseball
+  // Savant's percentile-ranking convention -- deliberately not the site's
+  // own --good/--bad green/red pair, since this widget mirrors that specific
+  // reference visual rather than the site's usual under/overpaid coloring.
+  const PCTL_COLOR_STOPS = [[0, [91, 132, 196]], [50, [172, 172, 164]], [100, [201, 74, 61]]];
+  function percentileColor(pct) {
+    const [lo, hi] = pct <= 50 ? [PCTL_COLOR_STOPS[0], PCTL_COLOR_STOPS[1]] : [PCTL_COLOR_STOPS[1], PCTL_COLOR_STOPS[2]];
+    const t = (pct - lo[0]) / (hi[0] - lo[0]);
+    const rgb = lo[1].map((c, i) => Math.round(c + (hi[1][i] - c) * t));
+    return `rgb(${rgb.join(',')})`;
+  }
+
+  function percentileRow(label, pct, valueText) {
+    if (pct == null) return '';
+    const color = percentileColor(pct);
+    return `<div class="pctl-row">
+      <span class="pctl-label">${label}</span>
+      <div class="pctl-track">
+        <div class="pctl-fill" style="width:${pct}%; background:${color};"></div>
+        <div class="pctl-badge" style="left:${pct}%; background:${color};">${pct}</div>
+      </div>
+      <span class="pctl-value">${valueText}</span>
+    </div>`;
+  }
+
+  function percentileSection(title, statList, record) {
+    const rows = statList.map(s => {
+      const pct = statPercentile(record, s.key, s.higherBetter);
+      if (pct == null) return '';
+      return percentileRow(s.label, pct, fmtStatValue(s.type, record.stats[s.key]));
     }).join('');
+    if (!rows) return '';
+    return `<div class="card-section-title pctl-section-title">${title}</div>
+      <div class="pctl-legend"><span>&larr; Poor</span><span>Average</span><span>Great &rarr;</span></div>
+      ${rows}`;
   }
 
   const CURRENT_SEASON = 2026;
@@ -1284,17 +1332,13 @@
     if (!record) return;
     const colors = teamColors[record.team] || ['#3a4a42', '#1a231e'];
     const grade = gradeFor(record.compPct);
-    const statSet = record.isBatter ? BATTER_STATS : PITCHER_STATS;
+    // sprint_speed splits out into its own "Running" section (Statcast-style
+    // layout) rather than sitting inside the main Batting percentile list.
+    const statSet = record.isBatter ? BATTER_STATS.filter(s => s.key !== 'sprint_speed') : PITCHER_STATS;
+    const runningStats = record.isBatter ? BATTER_STATS.filter(s => s.key === 'sprint_speed') : [];
 
-    let fieldingHtml = '';
-    const hasFielding = record.isBatter && FIELDING_STATS.some(s => record.stats[s.key] != null);
-    if (hasFielding) {
-      fieldingHtml = `
-        <div class="card-section-title">Fielding vs. ${record.position} average</div>
-        <div class="card-stats-grid card-stats-grid-3">
-          ${statGrid(record, FIELDING_STATS)}
-        </div>`;
-    }
+    const fieldingHtml = record.isBatter ? percentileSection('Fielding', FIELDING_STATS, record) : '';
+    const runningHtml = percentileSection('Running', runningStats, record);
 
     let regressionHtml = '';
     const arrow = regressionArrow(record);
@@ -1403,14 +1447,14 @@
         </div>
         <div class="card-body">
           <h2 class="card-name">${record.name}</h2>
-          <div class="card-subline">${record.position} · ${teamNameByAbbr[record.team] || record.team}</div>
+          <div class="card-subline">${record.position} · ${teamLogoImg(record.team, 15)}${teamNameByAbbr[record.team] || record.team}</div>
           ${regressionHtml}
           ${contractHtml}
           ${valueHtml}
           ${outlookHtml}
-          <div class="card-section-title">${record.isBatter ? 'Hitting' : 'Pitching'} vs. ${record.position} average</div>
-          <div class="card-stats-grid">${statGrid(record, statSet)}</div>
+          ${percentileSection(record.isBatter ? 'Batting' : 'Pitching', statSet, record)}
           ${fieldingHtml}
+          ${runningHtml}
           ${historyHtml}
         </div>
       </div>
@@ -1728,11 +1772,12 @@
     const maxAbs = 100;
     document.getElementById('player-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
       <tr class="row-toggle" data-idx="${i}">
-        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
         <td class="num" data-count="${p.salary}" data-count-fmt="money">${fmtMoney(p.salary)}</td>
         <td class="num" data-count="${p.compPct}" data-count-fmt="pct1">${p.compPct.toFixed(1)}</td>
         <td class="num" data-count="${p.salPct}" data-count-fmt="pct1">${p.salPct.toFixed(1)}</td>
         <td class="num" data-count="${p.recommendedSalary}" data-count-fmt="money">${fmtMoney(p.recommendedSalary)}</td>
+        <td class="num">${valueBar(p.score, maxAbs)}</td>
         <td class="num">${valueBar(p.score, maxAbs)}</td>
       </tr>`
     ).join('') : `<tr><td colspan="6"><div class="empty">No players match that search.</div></td></tr>`;
@@ -1789,10 +1834,11 @@
     const maxSurplus = Math.max(...allSurplus, 1);
     document.getElementById('rookie-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
       <tr class="row-toggle" data-idx="${i}">
-        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
         <td class="num" data-count="${p.salary}" data-count-fmt="money">${fmtMoney(p.salary)}</td>
         <td class="num" data-count="${p.compPct}" data-count-fmt="pct1">${p.compPct.toFixed(1)}</td>
         <td class="num" data-count="${p.projectedSalary}" data-count-fmt="money">${fmtMoney(p.projectedSalary)}</td>
+        <td class="num">${surplusBar(p.surplus, maxSurplus)}</td>
         <td class="num">${surplusBar(p.surplus, maxSurplus)}</td>
       </tr>`
     ).join('') : `<tr><td colspan="5"><div class="empty">No prospects match that search.</div></td></tr>`;
@@ -1957,7 +2003,12 @@
   // Roughly true-to-position layout on a 0 0 640 620 field, home plate at bottom.
   const POSITION_COORDS = {
     C:  { x: 320, y: 522 }, SP: { x: 320, y: 430 }, '1B': { x: 445, y: 428 },
-    '2B': { x: 320, y: 328 }, '3B': { x: 195, y: 428 }, SS: { x: 258, y: 372 },
+    // 2B's realistic fielding spot is shallow right of the bag, not standing
+    // on it -- mirrors SS's offset (which sits shallow left of the bag,
+    // toward 3B) onto the 1B side instead of using the bag's own coordinate,
+    // which used to leave 2B floating alone at the top of the diamond,
+    // detached from the rest of the infield cluster.
+    '2B': { x: 382, y: 372 }, '3B': { x: 195, y: 428 }, SS: { x: 258, y: 372 },
     LF: { x: 140, y: 208 }, CF: { x: 320, y: 128 }, RF: { x: 500, y: 208 },
     DH: { x: 566, y: 556 }, RP: { x: 74, y: 556 },
   };
@@ -2043,7 +2094,7 @@
     return `<tr class="diamond-row" data-abbr="${team.abbr}"><td colspan="4"><div class="diamond-accordion${expanded ? ' expanded' : ''}"><div class="diamond-accordion-inner">
       <div class="diamond-panel">
         <div class="diamond-head">
-          <h3>${team.name} — 2026 roster by position</h3>
+          <h3>${teamLogoImg(team.abbr, 24)}${team.name} — 2026 roster by position</h3>
           <span class="diamond-sub">Top player by playing time at each spot — "not qualified" means below the scoring minimum (150 PA / 50 IP)</span>
         </div>
         <div class="diamond-wrap">${renderDiamondSvg(team.abbr)}</div>
@@ -2075,7 +2126,7 @@
       const open = expandedTeam === t.abbr;
       const row = `
       <tr class="row-toggle" data-abbr="${t.abbr}">
-        <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${t.name}</span><span class="team-tag">${t.abbr}</span></div></td>
+        <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${teamLogoImg(t.abbr, 18)}${t.name}</span><span class="team-tag">${t.abbr}</span></div></td>
         <td>${t.division}</td>
         <td class="num" data-count="${t.payroll}" data-count-fmt="money">${fmtMoney(t.payroll)}</td>
         <td class="num">${valueBar(t.avgScore, maxAbs)}</td>
@@ -3010,7 +3061,7 @@
       const row = `
       <tr class="row-toggle" data-idx="${i}">
         <td class="num">${i + 1}</td>
-        <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}</span><span class="team-tag">${p.team}</span></div></td>
+        <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team}</span></div></td>
         <td><span class="pos-pill">${p.position}</span></td>
         <td class="num ${p.score >= 0 ? 'good' : 'bad'}" data-count="${p.score}" data-count-fmt="signed">${fmtSigned(p.score)}</td>
         <td class="num" data-count="${p.compPct}" data-count-fmt="pct1">${p.compPct.toFixed(1)}</td>
