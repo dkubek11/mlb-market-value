@@ -1,35 +1,38 @@
 #!/usr/bin/env bash
-# Prod script — build the React frontend and run the backend in production mode.
+# Prod script — build the dashboard and run the backend in production mode.
 #
 #   scripts/prod.sh
 #
-# In production the backend serves BOTH the API and the built dashboard bundle
-# (frontend/dist/index.html) from a single process on :8000 — no separate
-# frontend server needed. This script:
-#   1. Runs the npm production build (guards: prebuild-guard + verify-build).
-#   2. Applies migrations (idempotent).
+# In production the backend serves BOTH the API and the self-contained
+# dashboard (frontend/dashboard/dashboard_final.html) from a single process on
+# :8000 — no separate frontend server needed. This script:
+#   1. Applies migrations (idempotent).
+#   2. Builds the dashboard (build_dashboard.py + splice_dashboard.py).
 #   3. Runs uvicorn (no reload) on :8000.
 #
 # Database: SQLite by default. Override with DATABASE_URL.
-# Requires: backend/.venv, frontend/react node_modules.
+# Requires: backend/.venv.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND="$ROOT/backend"
-FRONTEND="$ROOT/frontend"
+DASHBOARD="$ROOT/frontend/dashboard"
 VENV_PYTHON="$BACKEND/.venv/bin/python"
 
-export DATABASE_URL="${DATABASE_URL:-sqlite:///./mlb_market_value.db}"
+export PYTHONPATH="$BACKEND"
+# Absolute SQLite path so the same DATABASE_URL works from any cwd (the
+# dashboard build and uvicorn each run from a different directory).
+export DATABASE_URL="${DATABASE_URL:-sqlite:///${BACKEND}/mlb_market_value.db}"
 
 # --- sanity checks -----------------------------------------------------------
 [ -x "$VENV_PYTHON" ] || { echo "ERROR: $VENV_PYTHON not found — create the venv first (see README.local.md)"; exit 1; }
-[ -d "$FRONTEND/node_modules" ] || { echo "ERROR: frontend/react/node_modules missing — run 'npm install' in $FRONTEND first"; exit 1; }
 
-# --- build frontend ----------------------------------------------------------
-echo "==> building frontend (npm run build)"
+# --- build dashboard ---------------------------------------------------------
+echo "==> building dashboard (build_dashboard.py + splice_dashboard.py)"
 (
-  cd "$FRONTEND"
-  npm run build
+  cd "$DASHBOARD"
+  "$VENV_PYTHON" build_dashboard.py
+  "$VENV_PYTHON" splice_dashboard.py
 )
 
 # --- migrations (idempotent) -------------------------------------------------

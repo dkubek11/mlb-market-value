@@ -10,13 +10,14 @@ Flow:
   2. ingest current season (with salaries)     -- skipped if already present
   3. ingest prior N seasons (skip-salary)      -- projection history; skipped if present
   4. compute player_value + team_payroll_summary for each ingested season
-  5. exec uvicorn (the running server)
+  5. build the offline dashboard (build_dashboard.py + splice_dashboard.py)
+  6. exec uvicorn (the running server)
 
-The dashboard no longer needs a build step: it fetches its data live from
-GET /api/dashboard at page load (see app/dashboard_data.py and
-frontend/dashboard/dashboard_template.html). Container restarts are fast
-because every step is idempotent and guarded by a cheap "is this season already
-in the DB?" check.
+The dashboard is a self-contained offline HTML file (data spliced in at build
+time by splice_dashboard.py) served at /; build_dashboard.py also queries the
+DB fresh, so no live-fetch or build step is needed at request time. Container
+restarts are fast because every step is idempotent and guarded by a cheap
+"is this season already in the DB?" check.
 
 Usage:
   python -m app.pipeline.run_all [--season 2026] [--history-seasons 3] [--migrate-only]
@@ -35,6 +36,23 @@ from sqlalchemy import text
 from app.db import engine
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent  # /app/backend
+DASHBOARD_DIR = BACKEND_DIR.parent / "frontend" / "dashboard"
+
+
+def run_dashboard_build(season: int) -> None:
+    """Regenerates the served dashboard file (dashboard_final.html) from the
+    freshly computed DB: build_dashboard.py writes dashboard_data.json,
+    splice_dashboard.py bakes it into the single-file HTML. Both scripts live
+    in frontend/dashboard/ and import the backend via PYTHONPATH."""
+    for script, args in (("build_dashboard.py", [str(season)]), ("splice_dashboard.py", [])):
+        print(f"==> python {script} {' '.join(args)}")
+        result = subprocess.run(
+            [sys.executable, str(DASHBOARD_DIR / script), *args],
+            cwd=BACKEND_DIR,
+            env={**os.environ, "PYTHONPATH": str(BACKEND_DIR)},
+        )
+        if result.returncode != 0:
+            raise SystemExit(f"{script} failed with exit code {result.returncode}")
 
 
 def run_migrations() -> None:
@@ -114,6 +132,9 @@ def main() -> None:
     # previous run left compute half-done.
     for season in seasons:
         run_pipeline_step("run_compute_value", "--season", str(season))
+
+    # Build the served dashboard from the fresh DB.
+    run_dashboard_build(args.season)
 
     # Boot the API (same as the original container CMD).
     print("==> starting uvicorn")

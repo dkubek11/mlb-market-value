@@ -1,26 +1,30 @@
 #!/usr/bin/env bash
-# Dev script — run the backend API and the Vite dev server together.
+# Dev script — apply migrations, rebuild the dashboard, and run the backend API
+# which serves the dashboard at http://localhost:8000/.
 #
 #   scripts/dev.sh
 #
 # Starts:
-#   1. Backend: uvicorn app.main:app --reload  -> http://localhost:8000  (API + docs)
-#   2. Frontend: Vite dev server                -> http://localhost:5173 (proxies /api -> :8000)
+#   1. Migrations (alembic upgrade head, idempotent)
+#   2. Dashboard build: build_dashboard.py + splice_dashboard.py -> dashboard_final.html
+#   3. Backend: uvicorn app.main:app --reload -> http://localhost:8000  (API + docs + dashboard)
 #
 # Database: SQLite by default (backend/mlb_market_value.db). Override with DATABASE_URL.
-# Requires: backend/.venv (python venv), frontend/react node_modules (npm install once).
+# Requires: backend/.venv (python venv).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND="$ROOT/backend"
-FRONTEND="$ROOT/frontend"
+DASHBOARD="$ROOT/frontend/dashboard"
 VENV_PYTHON="$BACKEND/.venv/bin/python"
 
-export DATABASE_URL="${DATABASE_URL:-sqlite:///./mlb_market_value.db}"
+export PYTHONPATH="$BACKEND"
+# Absolute SQLite path so the same DATABASE_URL works from any cwd (migrations,
+# the dashboard build, and uvicorn each run from a different directory).
+export DATABASE_URL="${DATABASE_URL:-sqlite:///${BACKEND}/mlb_market_value.db}"
 
 # --- sanity checks -----------------------------------------------------------
 [ -x "$VENV_PYTHON" ] || { echo "ERROR: $VENV_PYTHON not found — create the venv first (see README.local.md)"; exit 1; }
-[ -d "$FRONTEND/node_modules" ] || { echo "ERROR: frontend/react/node_modules missing — run 'npm install' in $FRONTEND first"; exit 1; }
 
 # --- migrations (idempotent) -------------------------------------------------
 echo "==> applying migrations (alembic upgrade head)"
@@ -29,31 +33,22 @@ echo "==> applying migrations (alembic upgrade head)"
   "$VENV_PYTHON" -m alembic upgrade head
 )
 
-# --- start both servers, kill both on Ctrl-C --------------------------------
-cleanup() {
-  echo
-  echo "==> stopping backend + frontend"
-  kill 0 2>/dev/null || true
-}
-trap cleanup EXIT INT TERM
+# --- rebuild the served dashboard --------------------------------------------
+echo "==> rebuilding dashboard (build_dashboard.py + splice_dashboard.py)"
+(
+  cd "$DASHBOARD"
+  "$VENV_PYTHON" build_dashboard.py
+  "$VENV_PYTHON" splice_dashboard.py
+)
 
+# --- run backend (serves API + dashboard) ------------------------------------
 echo "==> starting backend (uvicorn --reload) on :8000"
+echo
+echo "Dashboard:  http://localhost:8000/"
+echo "API docs:   http://localhost:8000/docs"
+echo "Press Ctrl-C to stop."
+echo
 (
   cd "$BACKEND"
   exec "$VENV_PYTHON" -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-) &
-
-echo "==> starting frontend (Vite) on :5173"
-(
-  cd "$FRONTEND"
-  exec npm run dev
-) &
-
-echo
-echo "Dashboard:  http://localhost:5173/"
-echo "API docs:   http://localhost:8000/docs"
-echo "Press Ctrl-C to stop both."
-echo
-
-# Wait for either process to exit, then the trap cleans up the other.
-wait
+)

@@ -13,6 +13,14 @@ build/
 frontend/dashboard/dashboard_data.json
 frontend/dashboard/dashboard_final.html
 
+# Local cache of MLB headshot images (see headshots.py) -- binary blobs, not
+# source; regenerates itself from MLB's own CDN on first use.
+frontend/dashboard/headshots_cache/
+
+# Local SQLite dev database and pipeline scratch (see README.local.md)
+backend/mlb_market_value.db
+backend/.cache/
+
 # Runtime logs from scripts/nightly_refresh.ps1
 scripts/logs/
 

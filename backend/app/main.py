@@ -10,15 +10,18 @@ from app.db import get_db
 
 app = FastAPI(title="MLB Market Value API")
 
-# The dashboard template is a plain static file; data is fetched live from
-# /api/dashboard at page load (see dashboard_template.html). Serve it at / so
-# a single container exposes both the API and the dashboard.
-_DASHBOARD_TEMPLATE = (
+# The dashboard is built offline by build_dashboard.py + splice_dashboard.py
+# into a single self-contained dashboard_final.html (data inlined via
+# __DATA_JSON__). Serve that at / when it exists; otherwise fall back to the
+# raw template so the route never 404s during development. A single container
+# exposes both the API and the dashboard.
+_DASHBOARD_DIR = (
     Path(__file__).resolve().parent.parent.parent
     / "frontend"
     / "dashboard"
-    / "dashboard_template.html"
 )
+_DASHBOARD_TEMPLATE = _DASHBOARD_DIR / "dashboard_template.html"
+_DASHBOARD_BUILT = _DASHBOARD_DIR / "dashboard_final.html"
 
 # position_enum stores "FIRST_BASE"/"SECOND_BASE"/"THIRD_BASE" as the literal
 # DB value (a bare "1B" isn't a valid Postgres enum label), but every other
@@ -48,12 +51,15 @@ def health():
 
 @app.get("/", include_in_schema=False)
 def dashboard():
-    """Serve the dashboard template at the root. Data is fetched live by the
-    browser from /api/dashboard at page load, so no build step is needed and
-    edits to dashboard_template.html are reflected on refresh."""
+    """Serve the dashboard at the root. Prefers the offline-built
+    dashboard_final.html (produced by build_dashboard.py + splice_dashboard.py,
+    data inlined at build time); falls back to the raw dashboard_template.html
+    when the splice hasn't been run yet."""
+    if _DASHBOARD_BUILT.exists():
+        return FileResponse(_DASHBOARD_BUILT)
     if _DASHBOARD_TEMPLATE.exists():
         return FileResponse(_DASHBOARD_TEMPLATE)
-    return {"error": "dashboard_template.html not found — the frontend must be present next to the backend."}
+    return {"error": "frontend/dashboard/dashboard_template.html not found — the frontend must be present next to the backend."}
 
 
 @app.get("/api/dashboard")

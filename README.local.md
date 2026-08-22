@@ -104,18 +104,26 @@ The dashboard is served at `http://localhost:8000/`. API docs are at `http://loc
 
 ### 6. Frontend development (optional)
 
-The dashboard is a single-file React build (`frontend/dist/index.html`)
-served by the API at `/`. For live editing with hot reload:
+The dashboard is the all-Python single-file build in
+[`frontend/dashboard/`](frontend/dashboard/) — a static HTML/JS/CSS template
+that `splice_dashboard.py` bakes data into. There is no separate frontend
+server or build toolchain.
+
+To regenerate the offline dashboard after a data refresh (run from `backend/`
+with the venv active so the SQLite DB path and `app` imports resolve):
 
 ```bash
-cd frontend
-npm install          # first time only
-npm run dev          # Vite on :5173, proxies /api to :8000
+cd backend
+DATABASE_URL="sqlite:///./mlb_market_value.db" .venv/bin/python ../frontend/dashboard/build_dashboard.py
+DATABASE_URL="sqlite:///./mlb_market_value.db" .venv/bin/python ../frontend/dashboard/splice_dashboard.py
 ```
 
-`npm run build` produces `dist/index.html` (with self-contained asset checks via
-`scripts/verify-build.mjs`). You only need to run it to pick up React source
-changes on the API server's `/` route.
+That writes `frontend/dashboard/dashboard_data.json` then splices it (plus the
+fonts) into `frontend/dashboard/dashboard_final.html`. Open that file directly,
+or serve it — `uvicorn`'s `/` route prefers `dashboard_final.html` when it
+exists and falls back to the raw template otherwise. Edits to
+`frontend/dashboard/dashboard_template.html` (the CSS/JS source) show up on the
+next splice.
 
 ### 7. Validate the API contract (optional)
 
@@ -173,23 +181,25 @@ DATABASE_URL="sqlite:///./mlb_market_value.db" python -m app.pipeline.run_ingest
 DATABASE_URL="sqlite:///./mlb_market_value.db" python -m app.pipeline.run_compute_value --season 2023
 ```
 
-## Dashboard: Live Data vs. Offline Snapshot
+## Dashboard: Offline Snapshot (all-Python)
 
-**Live (default).** The dashboard is `frontend/dist/index.html`, a
-single-file React build served at `/`. At page load the browser fetches data
-live from `GET /api/dashboard?season=2026`, so data is always fresh from the DB.
-
-**Offline snapshot (optional).** Build a self-contained bundle with an embedded
-snapshot using `VITE_EMBED_SNAPSHOT=1`:
+The dashboard is a **self-contained offline HTML file** — the same model as the
+original repo. `build_dashboard.py` queries the DB and writes
+`dashboard_data.json`; `splice_dashboard.py` inlines that JSON plus the fonts
+into `dashboard_final.html`. The result opens from disk or can be emailed —
+no server required. `GET /api/dashboard` also returns the same payload live for
+any future client that wants it.
 
 ```bash
-cd frontend
-VITE_EMBED_SNAPSHOT=1 npm run build
+cd frontend/dashboard
+DATABASE_URL="sqlite:///../../backend/mlb_market_value.db" python build_dashboard.py
+python splice_dashboard.py
+# open dashboard_final.html
 ```
 
-The React app then falls back to `window.__DASHBOARD_DATA__` (the embedded
-snapshot) when the live API is unreachable — no separate build scripts or
-server needed.
+The `GET /` route on `uvicorn` serves `dashboard_final.html` when present, so
+after splicing, `http://localhost:8000/` shows the same dashboard without
+opening the file.
 
 ## Containerized Stack (Docker Compose)
 
@@ -233,26 +243,22 @@ The task only runs while the machine is on; if asleep/off at 3am, `-StartWhenAva
 Make sure the venv is activated and you ran `pip install -r requirements.txt`.
 
 **Dashboard shows an error instead of the page**
-You're running the API from the repo root or wrong directory, or the React
-bundle hasn't been built. The API serves `frontend/dist/index.html`
-relative to the backend (`main.py`). Run `uvicorn` from `backend/` (or set
-`PYTHONPATH=backend`) and run `npm run build` in `frontend/` first.
+You're running the API from the repo root or wrong directory, or the dashboard
+hasn't been spliced yet. The API serves `frontend/dashboard/dashboard_final.html`
+(if present) or the raw `dashboard_template.html`, relative to the backend
+(`main.py`). Run `uvicorn` from `backend/` (or set `PYTHONPATH=backend`), and
+run `build_dashboard.py` + `splice_dashboard.py` if the `/` route shows an
+unrendered template.
 
 **Dashboard shows "No qualified players found for the YYYY season yet"**
 The season hasn't been ingested (or players don't meet the 150 PA / 50 IP
-qualification bar). Run the pipeline for that season and reload.
+qualification bar). Run the pipeline for that season and rebuild.
 
-**`npm run dev` can't reach the API**
-Make sure `uvicorn app.main:app --reload` is running on port 8000 with the
-SQLite `DATABASE_URL` override. The Vite dev server proxies `/api` to
-`http://localhost:8000`.
-
-**Port 8000 or 5173 already in use**
+**Port 8000 already in use**
 Kill the conflicting process, or run uvicorn on a different port:
 ```bash
 uvicorn app.main:app --reload --port 8001
 ```
-Then update the proxy in `frontend/vite.config.ts` accordingly.
 
 **Database is locked / "database is busy"**
 SQLite allows one writer at a time. Stop any other process accessing `mlb_market_value.db` (IDE database tools, other terminal tabs, etc.).

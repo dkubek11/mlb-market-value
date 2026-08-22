@@ -14,11 +14,7 @@ courier_bold_b64 = (HERE / "courier-bold.b64").read_text(encoding="utf-8").strip
 noise_b64 = (HERE / "noise.b64").read_text(encoding="utf-8").strip()
 
 out = template
-# The template embeds the payload as JSON.parse('__DATA_JSON__'), so escape any
-# backslashes and single quotes (player names like "O'Neil") for the JS string
-# literal context before substitution.
-data_json_escaped = data_json.replace("\\", "\\\\").replace("'", "\\'")
-out = out.replace("__DATA_JSON__", data_json_escaped)
+out = out.replace("__DATA_JSON__", data_json)
 out = out.replace("__RYE_FONT__", rye_b64)
 out = out.replace("__COURIER_REGULAR_FONT__", courier_reg_b64)
 out = out.replace("__COURIER_BOLD_FONT__", courier_bold_b64)

@@ -2,7 +2,7 @@
 
 Correlates MLB player salaries with on-field performance. Pulls stats from the MLB Stats API, Statcast, and FanGraphs; computes a weighted, position-relative performance score; compares it to actual pay; and projects what a player's performance says they should be earning (including multi-year, comparable-player-based projections for regression/trend analysis).
 
-The live dashboard is a self-contained HTML build (`frontend/dashboard/`) generated from the database — no separate frontend server to run. The single file is produced by a **React + Vite** app in `frontend/react/` (see [Dashboard: live data vs. offline snapshot](#dashboard-live-data-vs-offline-snapshot) for the build/dev workflow).
+The dashboard is a self-contained HTML build generated from the database by Python scripts — no separate frontend server, build toolchain, or runtime dependencies. [`build_dashboard.py`](frontend/dashboard/build_dashboard.py) queries the DB and [`splice_dashboard.py`](frontend/dashboard/splice_dashboard.py) bakes the payload (and fonts) into a single offline `dashboard_final.html`. See [Dashboard](#dashboard-live-data-vs-offline-snapshot) for the rebuild workflow.
 
 ## Project layout
 
@@ -25,15 +25,11 @@ backend/
   alembic/                 DB migrations
 frontend/
   dashboard/
-    dashboard_template.html  the dashboard (single self-contained HTML, React build output)
-    dashboard_template.html.bak  pre-migration legacy template (rollback artifact; never served)
+    dashboard_template.html  the dashboard source (HTML/JS/CSS; data inlined by splice)
     team_colors.json          static team brand colors (consumed by the API payload; must stay put)
-    build_dashboard.py       (legacy) queries the DB fresh -> dashboard_data.json (offline snapshot path)
-    splice_dashboard.py      (legacy) bakes data + fonts into dashboard_final.html (offline snapshot path)
-  react/
-    src/                     React + TypeScript source (views, components, scoring engine port)
-    scripts/deploy-build.mjs  copies dist/index.html onto dashboard_template.html (atomic + .bak backup)
-    vite.config.ts            singlefile build config
+    build_dashboard.py        queries the DB fresh -> dashboard_data.json (offline snapshot path)
+    splice_dashboard.py       bakes data + fonts into dashboard_final.html (offline snapshot path)
+    headshots.py              fetches player headshot images from MLB's CDN
   ```
 
 ## Setup
@@ -76,7 +72,7 @@ The image ships with a **fresh, empty schema**. On startup, the API container ru
 4. **Compute** player values + team payroll summaries
 5. **Boot** the API
 
-The dashboard is a **React single-file build**: the container serves [`dashboard_template.html`](frontend/dashboard/dashboard_template.html), which fetches its data live from `GET /api/dashboard?season=YYYY` at page load (exactly the request the legacy template made). To rebuild it after editing React source:
+The dashboard is a single self-contained HTML file: the container serves [`dashboard_final.html`](frontend/dashboard/dashboard_final.html) at `/` when it exists (falling back to the raw `dashboard_template.html`), and it can equally be opened from disk or emailed. To rebuild it after editing `dashboard_template.html`:
 
 Every step is idempotent — a season already in the DB is skipped, so container restarts are fast (no re-fetching from the network). The whole flow is one command:
 
@@ -121,41 +117,37 @@ py -m app.pipeline.run_ingest --season 2023 --skip-salary
 
 ## Dashboard: live data vs. offline snapshot
 
-**Live (default).** The dashboard is [`dashboard_template.html`](frontend/dashboard/dashboard_template.html), a single-file React build served at `/`. At page load the browser fetches the full payload from `GET /api/dashboard?season=2026` (built by [`app.dashboard_data.build_dashboard_payload`](backend/app/dashboard_data.py)) and renders — so data is always fresh from the DB. The container bind-mounts `./frontend/dashboard`, so a rebuilt template is live on refresh (bind-mount caveat: a **rename** in `deploy-build.mjs` pins the mount to the old inode, so after `npm run build` restart the api container: `docker restart mlb-mv-api`).
+The dashboard is built from the live DB by two Python scripts in `frontend/dashboard/`:
 
-### React build / dev (from `frontend/react/`)
+1. [`build_dashboard.py`](frontend/dashboard/build_dashboard.py) queries the DB and writes `dashboard_data.json`.
+2. [`splice_dashboard.py`](frontend/dashboard/splice_dashboard.py) inlines that JSON plus the Rye/Courier fonts into `dashboard_final.html`.
 
-```bash
-npm install          # first time
-npm run dev          # Vite dev server on :5173, proxies /api to the backend (no CORS)
-npm run build        # vite build -> dist/index.html -> deploy-build.mjs -> ../dashboard/dashboard_template.html
-npm test             # vitest: data-layer + scoring parity gate (13 tests)
-```
-
-`npm run build` is the only step that writes the served file; `deploy-build.mjs` writes atomically (temp file + rename), refuses to deploy a bundle with non-inlined assets or leaked internal paths, and creates `dashboard_template.html.bak` on first deploy for one-command rollback. `npm run dev` is for local development only — it never touches `frontend/dashboard/`.
-
-**Offline snapshot (optional, legacy path).** To produce a single self-contained `dashboard_final.html` (fonts + data embedded) that works with no server — useful for emailing or opening from disk — run the two build scripts. They call the *same* [`build_dashboard_payload`](backend/app/dashboard_data.py) the API uses, so a snapshot and the live API can never diverge:
+The result is a fully self-contained offline HTML file that opens from disk, can be emailed, and is served at `/` by the container when present:
 
 ```bash
-# local dev, from frontend/dashboard/ with the backend venv active
+# from frontend/dashboard/, with the backend venv active
 py build_dashboard.py 2026   # queries the DB, writes dashboard_data.json
 py splice_dashboard.py       # bakes it into dashboard_final.html
 ```
 
-`dashboard_final.html` is gitignored — it's a generated artifact. **Edit `frontend/react/src/` and run `npm run build`; never hand-edit `dashboard_template.html` or the final.** In the container, `splice_dashboard.py`'s `__DATA_JSON__` replacement is escaped for the `JSON.parse('...')` context so apostrophes in player names survive.
+> **Linux/SQLite dev:** `build_dashboard.py` resolves the backend relative to the
+> repo (no hardcoded path), so just use the venv python and point `DATABASE_URL`
+> at the local file, e.g. `DATABASE_URL="sqlite:///../../backend/mlb_market_value.db" python build_dashboard.py`
+> from `frontend/dashboard/`. Windows/Postgres and the container need no override.
+
+`dashboard_final.html` is gitignored — it's a generated artifact. **Edit `dashboard_template.html` (the CSS/JS source) and re-run the splice; never hand-edit `dashboard_final.html`.** The `__DATA_JSON__` replacement is escaped for the `JSON.parse('...')` context so apostrophes in player names survive.
+
+The same payload is also available live at `GET /api/dashboard?season=YYYY` (built by [`app.dashboard_data.build_dashboard_payload`](backend/app/dashboard_data.py)) for any client that wants it without a splice.
 
 ### Rollback
 
+`dashboard_template.html` is the source of truth and is git-tracked, so restoring the previous template is a single command:
+
 ```bash
-# restore the pre-migration legacy template (one command, zero backend involvement)
-cp frontend/dashboard/dashboard_template.html.bak frontend/dashboard/dashboard_template.html
-# then, because deploy-build.mjs renames files (inode change), restart the api container:
-docker restart mlb-mv-api
-# or, if git-tracked:
 git checkout -- frontend/dashboard/dashboard_template.html
 ```
 
-The `.bak` file is bind-mounted too but is never served (the backend serves only the exact filename `dashboard_template.html`), so it is safe to keep beside the template.
+No `.bak` copy is involved and no container restart is needed (the `/` route reads `dashboard_final.html` from disk per request, and regenerating it with `splice_dashboard.py` overwrites it in place).
 
 ## Methodology notes
 
@@ -166,7 +158,7 @@ The `.bak` file is bind-mounted too but is never served (the backend serves only
 
 ## Scheduling
 
-`scripts/nightly_refresh.ps1` runs the full pipeline (ingest → compute value → rebuild dashboard data + HTML) and logs to `scripts/logs/`. The last two steps call the legacy `build_dashboard.py` + `splice_dashboard.py` to regenerate the offline `dashboard_final.html` snapshot — they do **not** rebuild the React single-file that the container serves at `/`. The served `dashboard_template.html` is rebuilt only by `npm run build` (React), or by re-deploying the image. It's registered as a **Windows Task Scheduler** job (`MLBMarketValueNightlyRefresh`, daily at 3am, catch-up-if-missed enabled) rather than anything app-dependent — it runs whether or not Claude Code, or any other app, happens to be open. To register it on a new machine:
+`scripts/nightly_refresh.ps1` runs the full pipeline (ingest → compute value → rebuild dashboard data + HTML) and logs to `scripts/logs/`. The last two steps call `build_dashboard.py` + `splice_dashboard.py` to regenerate the offline `dashboard_final.html` snapshot, which is also what the container serves at `/`. It's registered as a **Windows Task Scheduler** job (`MLBMarketValueNightlyRefresh`, daily at 3am, catch-up-if-missed enabled) rather than anything app-dependent — it runs whether or not Claude Code, or any other app, happens to be open. To register it on a new machine:
 
 ```powershell
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-ExecutionPolicy Bypass -File "<repo path>\scripts\nightly_refresh.ps1"'
