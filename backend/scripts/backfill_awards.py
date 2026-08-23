@@ -3,7 +3,7 @@ Silver Slugger/Gold Glove winners from the MLB Stats API for recent seasons.
 Player id is MLBAM's own, so no name matching -- only skips a winner if
 they're not in our players table at all (extremely rare in this range).
 
-Usage: py backfill_awards.py
+Usage (from backend/): python -m scripts.backfill_awards
 """
 
 from datetime import datetime, timezone

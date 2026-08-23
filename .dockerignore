@@ -15,6 +15,7 @@ backend/.venv
 backend/.env
 
 # Plans / docs
+docs
 plans
 *.md
 

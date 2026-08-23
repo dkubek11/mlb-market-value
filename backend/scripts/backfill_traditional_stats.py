@@ -5,7 +5,7 @@ were added mid-project (after the original historical backfill ran with
 does not touch Statcast/FanGraphs plate-discipline/extension data, which is
 already correct, so no need to re-run the full (slow) ingest pipeline.
 
-Usage: py backfill_traditional_stats.py
+Usage (from backend/): python -m scripts.backfill_traditional_stats
 """
 
 from sqlalchemy import text

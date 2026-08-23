@@ -1,0 +1,65 @@
+
+Healthy in ~30s. The container is up. Now the real verification of the whole feature: confirm / serves the live template (with the fetch and no __DATA_JSON__ placeholder), 
+and /api/dashboard returns the full payload. 
+The first API call runs the projections, so it takes a few seconds.
+
+
+=============================================================================================
+
+=== / serves live template ===
+1
+=== placeholder gone from served HTML ===
+2
+=== /api/dashboard payload (first call builds projections) ===
+http 200, 450196 bytes, 0.494091s
+=== payload keys ===
+keys: ['allPlayers', 'positionStats', 'teams', 'rosters', 'teamColors', 'contracts', 'capturedAt']
+players: 624
+batters: 302
+pitchers: 322
+teams: 30
+capturedAt: 2026-08-04 18:06 UTC
+sample player: {
+  "id": 667670,
+  "name": "Brent Rooker",
+  "team": "ATH",
+  "position": "DH",
+  "isBatter": true,
+  "isPreArb": false,
+  "salary": 8000000,
+  "aav": 12000000,
+  "contractType": "Extension",
+  "stats": {
+    "ba": 0.2,
+    "obp": 0.281,
+    "slg": 0.389,
+    "xwoba": 0.316,
+    "xba": 0.208,
+    "xslg": 0.438,
+    "hr": 10.0,
+    "rbi": 29.0,
+    "sb": 2.0,
+    "barrel_rate": 15.4,
+    "hard_hit_rate": 41.9,
+    "sprint_speed": 27.6,
+    "chase_rate": 0.333,
+    "whiff_rate": 0.179,
+    "k_rate": 0.32,
+    "bb_rate": 0.094,
+    "oaa": 0.0,
+    "frv": 0.0,
+    "drs": -1.0
+  },
+  "age": null,
+
+
+=============================================================================================
+Everything works:
+
+/ serves the live template — it contains the fetch('/api/dashboard?season=...') call (count 1).
+The __DATA_JSON__ placeholder appears twice in the served HTML — that's expected and correct: it's the JSON.parse('__DATA_JSON__') fallback inside the fetch's catch block (the try/catch for the offline splice path). Since the live API succeeds, the browser never hits it. Let me confirm those 2 occurrences are exactly the fallback, not the old direct assignment.
+/api/dashboard works: HTTP 200, 450KB, full payload — 624 players (302 batters / 322 pitchers), 30 teams, projections, contracts, capturedAt. This is real, fresh-from-DB data with stats and salaries (Brent Rooker, Extension, 
+8
+M
+/
+8M/12M AAV).

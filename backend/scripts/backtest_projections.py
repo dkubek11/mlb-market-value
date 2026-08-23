@@ -11,7 +11,7 @@ player's raw Y-1 value, no regression/blend/aging) to see whether the
 projection system adds real predictive value or is just an elaborate way of
 restating last year's number.
 
-Usage: py backtest_projections.py
+Usage (from backend/): python -m scripts.backtest_projections
 """
 
 import sys

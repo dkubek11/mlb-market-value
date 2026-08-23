@@ -15,7 +15,9 @@
 # kills the script on ordinary stderr chatter -- like pybaseball's tqdm
 # progress bars, which write to stderr and aren't actual errors.
 
-$RepoRoot = "C:\Users\dylan\Desktop\mlb-market-value"
+# Resolve repo root from this script's own location so the job works on any
+# machine regardless of where the repo is cloned.
+$RepoRoot = Split-Path -Parent $PSScriptRoot
 $Backend = Join-Path $RepoRoot "backend"
 $Dashboard = Join-Path $RepoRoot "frontend\dashboard"
 $Validate = Join-Path $RepoRoot "scripts\validate"

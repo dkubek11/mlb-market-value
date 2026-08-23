@@ -10,6 +10,7 @@ The dashboard is a self-contained HTML build generated from the database by Pyth
 backend/
   app/
     models.py              SQLAlchemy models
+    dashboard_data.py      live GET /api/dashboard payload builder
     pipeline/               data ingestion + computation
       mlb_stats_api.py       traditional stats (MLB Stats API)
       statcast_metrics.py     expected stats, exit velo (pybaseball/Statcast)
@@ -22,6 +23,11 @@ backend/
       compute_value.py        performance-vs-pay percentile computation
       projections.py          Marcel-style multi-year regression projections
       comp_projections.py     nearest-neighbor comparable-player projections
+      run_all.py              container entrypoint (migrate -> ingest -> compute -> build -> boot)
+  scripts/                 one-off maintenance/validation tools
+    backfill_*.py            historical backfills (arb outcomes, awards, traditional stats)
+    backtest_projections.py  projection-engine backtest against real outcomes
+    validate_api_schema.py   Pydantic contract check of the /api/dashboard payload
   alembic/                 DB migrations
 frontend/
   dashboard/
@@ -30,16 +36,23 @@ frontend/
     build_dashboard.py        queries the DB fresh -> dashboard_data.json (offline snapshot path)
     splice_dashboard.py       bakes data + fonts into dashboard_final.html (offline snapshot path)
     headshots.py              fetches player headshot images from MLB's CDN
+    logos.py                  fetches team logo SVGs from MLB's CDN
+    assets/                   static images (league logos)
+scripts/
+  dev.sh / prod.sh        local run scripts (SQLite by default)
+  nightly_refresh.ps1     Windows Task Scheduler job (ingest -> compute -> rebuild dashboard)
+  validate/               headless-browser dashboard checks (validate_dashboard.js)
+docs/                     planning, testing, and migration notes
   ```
 
 ## Setup
 
 1. **Postgres**: create a database (e.g. `mlb_market_value`) on a local or hosted Postgres instance.
-2. **Python env**:
+2. **Python env** (named `.venv` — `scripts/dev.sh` / `scripts/prod.sh` expect `backend/.venv`):
    ```
    cd backend
-   python -m venv venv
-   venv\Scripts\activate      (Windows)  /  source venv/bin/activate  (macOS/Linux)
+   python -m venv .venv
+   .venv\Scripts\activate      (Windows)  /  source .venv/bin/activate  (macOS/Linux)
    pip install -r requirements.txt
    ```
 3. **Config**: copy `backend/.env.example` to `backend/.env` and set `DATABASE_URL` to your Postgres connection string.

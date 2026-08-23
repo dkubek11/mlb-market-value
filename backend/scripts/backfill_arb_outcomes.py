@@ -10,7 +10,7 @@ directly by PLATFORM SEASON (the year the salary was decided on):
 rate/counting-stat comp, and its real-world arb cases were themselves
 governed by ad hoc rules, not the normal CBA process.
 
-Usage: py backfill_arb_outcomes.py
+Usage (from backend/): python -m scripts.backfill_arb_outcomes
 """
 
 import re

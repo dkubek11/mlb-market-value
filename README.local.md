@@ -6,39 +6,49 @@ This guide covers the **zero-infrastructure local development path**. No Postgre
 
 ## Quick Start
 
+The fastest path is the one-command script (venv + migrations + dashboard build +
+API server, all in one):
+
+```bash
+python -m venv backend/.venv          # first time only
+backend/.venv/bin/pip install -r backend/requirements.txt
+scripts/dev.sh                        # migrations -> build dashboard -> uvicorn on :8000
+```
+
+Open **http://localhost:8000/** for the dashboard, and **http://localhost:8000/docs**
+for the API docs.
+
+Or step by step, from `backend/`:
+
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate      # macOS/Linux
-# venv\Scripts\activate       # Windows
+python -m venv .venv
+source .venv/bin/activate      # macOS/Linux
+# .venv\Scripts\activate       # Windows
 pip install -r requirements.txt
-cp .env.example .env
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
 That's it. The database file `mlb_market_value.db` is created automatically in `backend/`.
+For SQLite local dev you do **not** need a `.env` file (see §2 below).
 
-Then in a second terminal:
-
-```bash
-cd frontend
-npm install          # first time only
-npm run dev          # Vite dev server on :5173
-```
-
-Open **http://localhost:5173/** for the dashboard (proxies `/api` to the backend at `:8000`).
+The dashboard is a **single self-contained HTML file** — no separate frontend
+server or build toolchain. `GET /` serves `frontend/dashboard/dashboard_final.html`
+(when built) or the raw `dashboard_template.html` (before the first splice). To
+regenerate it after data changes, run the two scripts in `frontend/dashboard/`
+(`build_dashboard.py` → `splice_dashboard.py`), or just re-run `scripts/dev.sh`.
 
 ## What's Different
 
 | | Local dev (this file) | Docker (README.md) |
 |---|---|---|
 | Database | SQLite file (`mlb_market_value.db`) | Postgres container |
-| Setup steps | 4 commands | `docker compose up -d --build` |
+| Setup steps | 1 command (`scripts/dev.sh`) | `docker compose up -d --build` |
 | `.env` needed | No — SQLite via `DATABASE_URL` override | Yes — `DATABASE_URL` required |
-| Migrations | `alembic upgrade head` | Automatic on container boot |
+| Migrations | `alembic upgrade head` (dev.sh does it) | Automatic on container boot |
 | Data ingest | Manual (`python -m app.pipeline.run_ingest`) | Automatic on container boot |
-| Frontend dev | `npm run dev` on `:5173` | Build + serve by API container |
+| Frontend dev | All-Python single-file build, served at `/` | Same, served by API container |
 | Production parity | Lower (SQLite dialect) | Exact (Postgres 16) |
 
 ## Setup in Detail
@@ -47,9 +57,9 @@ Open **http://localhost:5173/** for the dashboard (proxies `/api` to the backend
 
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate      # macOS/Linux
-# venv\Scripts\activate       # Windows
+python -m venv .venv
+source .venv/bin/activate      # macOS/Linux
+# .venv\Scripts\activate       # Windows
 pip install -r requirements.txt
 ```
 
@@ -128,8 +138,8 @@ next splice.
 ### 7. Validate the API contract (optional)
 
 `backend/scripts/validate_api_schema.py` validates the `/api/dashboard` payload
-against Pydantic models that mirror the frontend TypeScript types. See
-[TESTING.md](TESTING.md) §10 for the full parity procedure.
+against Pydantic models. See [docs/TESTING.md](docs/TESTING.md) §10 for the full
+parity procedure.
 
 ```bash
 cd backend
