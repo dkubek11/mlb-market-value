@@ -1569,18 +1569,45 @@
     return { gap, projected, label: 'ERA', type: 'rate2', threshold: 0.4 };
   }
 
+  // Hot vs Cold is specifically a last-30-real-days signal -- how a player
+  // is doing lately -- not the season-to-date over/underperforming tag shown
+  // elsewhere on cards/lists (regressionSignal/regressionArrow above, which
+  // stays season-long there on purpose, a different, still-valid concept).
+  // Compared against the same season-long projected true talent as
+  // everywhere else; only the "actual" side is a real trailing-30-day stat
+  // (record.last30, from the MLB Stats API's byDateRange split -- see
+  // build_dashboard.py). Threshold is wider than the season-long one
+  // (0.035 AVG / 0.75 ERA vs 0.02 / 0.4) since a ~25-game window is
+  // naturally noisier than a full season at the same underlying skill level.
+  const LAST30_THRESHOLD = { ba: 0.035, era: 0.75 };
+  function last30Signal(record) {
+    if (record.last30 == null) return null;
+    const projected = record.projected && (record.isBatter ? record.projected.xba : record.projected.xera);
+    if (projected == null) return null;
+    return record.isBatter
+      ? { actual: record.last30, projected, gap: record.last30 - projected, label: 'AVG (L30)', type: 'avg3', threshold: LAST30_THRESHOLD.ba }
+      : { actual: record.last30, projected, gap: projected - record.last30, label: 'ERA (L30)', type: 'rate2', threshold: LAST30_THRESHOLD.era };
+  }
+  function last30Arrow(record) {
+    const sig = last30Signal(record);
+    if (!sig || Math.abs(sig.gap) < sig.threshold) return null;
+    return sig.gap > 0
+      ? { symbol: '▲', cls: 'good', sig }
+      : { symbol: '▼', cls: 'bad', sig };
+  }
+
   function renderHotCold() {
     const hot = [], cold = [];
     marketPlayers.forEach(p => {
-      const arrow = regressionArrow(p);
+      const arrow = last30Arrow(p);
       if (!arrow) return;
-      if (arrow.cls === 'bad') hot.push({ p, sig: arrow.sig });
+      if (arrow.cls === 'good') hot.push({ p, sig: arrow.sig });
       else cold.push({ p, sig: arrow.sig });
     });
-    // MOCK FALLBACK: this build has no projected true-talent data, so the
-    // real regression signal is empty. Populate with clearly-labeled example
-    // deltas on real player names so the section is exercisable; the banner
-    // (and this branch) must be removed once projections exist.
+    // MOCK FALLBACK: no player clears the last-30-days playing-time floor in
+    // this build (e.g. off-season, or the MLB Stats API's byDateRange pull
+    // came back empty) -- populate with clearly-labeled example deltas so
+    // the section is exercisable rather than blank.
     const isMock = hot.length === 0 && cold.length === 0;
     if (isMock) {
       const batters = marketPlayers.filter(p => p.isBatter);
@@ -1591,7 +1618,7 @@
       [...batters].sort((a, b) => a.score - b.score).slice(0, 6)
         .concat([...pitchers].sort((a, b) => a.score - b.score).slice(0, 4))
         .forEach(p => cold.push({ p, sig: mockSig(p, false) }));
-      console.warn('Hot vs Cold: projections unavailable in this build — rendering MOCK data. Rebuild with the projection pipeline to replace it.');
+      console.warn('Hot vs Cold: no real last-30-days signal in this build — rendering MOCK data.');
     }
     hot.sort((a, b) => b.sig.gap - a.sig.gap);
     cold.sort((a, b) => a.sig.gap - b.sig.gap);
@@ -1601,17 +1628,17 @@
       const over = sig.gap > 0;
       return `<button class="pick-row" data-pidx="${pushHomeRow(p)}">
         <span class="preview-row-name">${p.name} <span class="preview-row-tag">${p.team} · ${p.position}</span></span>
-        <span class="preview-row-val ${over ? 'bad' : 'good'}">${delta} <span class="regression-tag ${over ? 'bad' : 'good'}">${over ? '▼' : '▲'}</span></span>
+        <span class="preview-row-val ${over ? 'good' : 'bad'}">${delta} <span class="regression-tag ${over ? 'good' : 'bad'}">${over ? '▲' : '▼'}</span></span>
       </button>`;
     };
     const hotRows = hot.length ? hot.slice(0, 10).map(row).join('') : '<div class="empty">No players past the noise threshold in this build.</div>';
     const coldRows = cold.length ? cold.slice(0, 10).map(row).join('') : '<div class="empty">No players past the noise threshold in this build.</div>';
     const banner = isMock
-      ? `<div class="mock-note"><span class="mock-badge">MOCK DATA</span><span>Projections aren't available in this build, so the lists below use fabricated example deltas on real players. Rebuild with the projection pipeline (build_dashboard.py + projections) and this banner disappears.</span></div>`
+      ? `<div class="mock-note"><span class="mock-badge">MOCK DATA</span><span>No real last-30-days signal available in this build, so the lists below use fabricated example deltas on real players.</span></div>`
       : '';
     const sublabel = isMock
-      ? 'MOCK example deltas — real signal needs projected true talent'
-      : 'actual vs. Marcel + comp projected true talent';
+      ? 'MOCK example deltas — real signal needs last-30-days data'
+      : 'last 30 real days vs. Marcel + comp projected true talent';
     document.getElementById('explore-hot-cold').innerHTML = `
       <div class="preview-head">
         <h3>Hot vs Cold <span class="preview-sub">${sublabel}</span></h3>
@@ -1619,11 +1646,11 @@
       ${banner}
       <div class="hot-cold-cols">
         <div>
-          <div class="explore-subhead hot">Hot — running ahead of projection</div>
+          <div class="explore-subhead hot">Hot — outperforming over the last 30 days</div>
           ${hotRows}
         </div>
         <div>
-          <div class="explore-subhead cold">Cold — running behind projection</div>
+          <div class="explore-subhead cold">Cold — underperforming over the last 30 days</div>
           ${coldRows}
         </div>
       </div>`;

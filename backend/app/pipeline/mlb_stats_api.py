@@ -1,3 +1,5 @@
+import datetime
+
 import requests
 
 BASE_URL = "https://statsapi.mlb.com/api/v1"
@@ -44,6 +46,30 @@ def fetch_bulk_stats(season: int, group: str) -> list[dict]:
     )
     resp.raise_for_status()
     return resp.json()["stats"][0]["splits"]
+
+
+def fetch_trailing_stats(end_date, days: int, group: str) -> list[dict]:
+    """group is 'hitting' or 'pitching'. Returns raw split dicts (same shape
+    as fetch_bulk_stats) for the `days`-day window ending on end_date -- the
+    real trailing-window equivalent of the season-long bulk pull, used for
+    the Hot vs Cold section (last real 30 days, not season-to-date)."""
+    start_date = end_date - datetime.timedelta(days=days)
+    resp = requests.get(
+        f"{BASE_URL}/stats",
+        params={
+            "stats": "byDateRange",
+            "group": group,
+            "sportId": SPORT_ID,
+            "playerPool": "all",
+            "limit": 5000,
+            "startDate": start_date.isoformat(),
+            "endDate": end_date.isoformat(),
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    stats = resp.json().get("stats")
+    return stats[0]["splits"] if stats else []
 
 
 def resolve_traded_player_team(player_id: int, season: int, group: str) -> int | None:

@@ -27,6 +27,7 @@ from app.pipeline.projections import (
 from app.pipeline.comp_projections import compute_batter_comp_projections, compute_pitcher_comp_projections
 from app.pipeline.fangraphs_salary import TEAM_SLUG_TO_ABBREVIATION, fetch_team_contracts
 from app.pipeline import mlbtr_arbitration
+from app.pipeline import mlb_stats_api
 from app.pipeline.ingest import _normalize_name
 from headshots import get_headshot_data_uri
 from logos import get_team_logo_data_uri
@@ -290,6 +291,42 @@ print(f"[{season}] computing 3-year-forward projections for contract-value locks
 batter_future = compute_batter_projections_future_years(season)
 pitcher_future = compute_pitcher_projections_future_years(season)
 
+# Real last-30-days actual performance (not season-to-date) for the Hot vs
+# Cold section -- a genuine "how is this player doing lately" signal,
+# compared against the same season-long projected true talent used
+# everywhere else, rather than reusing the season-to-date regression signal
+# (which the site already shows elsewhere, on player cards/lists, as a
+# distinct "over/underperforming this season" concept).
+MIN_LAST30_PA = 40
+MIN_LAST30_OUTS = 24  # 8 IP
+
+
+def _parse_trailing_stats(splits, stat_key, pt_key, min_pt):
+    out = {}
+    for s in splits:
+        stat = s.get("stat", {})
+        pt = stat.get(pt_key)
+        raw_val = stat.get(stat_key)
+        pid = s.get("player", {}).get("id")
+        if pid is None or pt is None or pt < min_pt or raw_val is None:
+            continue
+        try:
+            out[int(pid)] = float(raw_val)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+print(f"[{season}] fetching trailing 30-day stats for Hot vs Cold...")
+_last30_end = datetime.date.today()
+last30_batting = _parse_trailing_stats(
+    mlb_stats_api.fetch_trailing_stats(_last30_end, 30, "hitting"), "avg", "plateAppearances", MIN_LAST30_PA
+)
+last30_pitching = _parse_trailing_stats(
+    mlb_stats_api.fetch_trailing_stats(_last30_end, 30, "pitching"), "era", "outs", MIN_LAST30_OUTS
+)
+print(f"  last30: {len(last30_batting)} batters, {len(last30_pitching)} pitchers clear the playing-time floor")
+
 positionStats = {}
 for pos, grp in batters.groupby("position"):
     positionStats[pos] = {}
@@ -451,7 +488,7 @@ batter_history_by_player = _history_rows(hist_batters, BATTER_STATS)
 pitcher_history_by_player = _history_rows(hist_pitchers, PITCHER_STATS)
 
 
-def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map, future_map):
+def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map, future_map, last30_map):
     proj = proj_map.get(int(r.player_id), {})
     future = future_map.get(int(r.player_id), {})
     debut_date = getattr(r, "debut_date", None)
@@ -500,6 +537,12 @@ def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map, fu
             str(yr): {s: clean(stats.get(s)) for s in proj_stat_keys}
             for yr, stats in future.items()
         },
+        # Real AVG (batters) / ERA (pitchers) over the trailing 30 real days
+        # (not season-to-date) -- None if the player didn't clear the
+        # playing-time floor in that window. Powers the Home-tab Hot vs Cold
+        # section specifically (compared against the same season-long
+        # projected true talent as everywhere else).
+        "last30": clean(last30_map.get(int(r.player_id))),
         # Last 5 completed seasons the player qualified in (may be shorter or
         # empty for young players) -- no salary, see HISTORY_BATTER_Q comment.
         "history": history_map.get(int(r.player_id), []),
@@ -525,9 +568,9 @@ def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map, fu
 
 print(f"[{season}] fetching headshots (only players missing from the local cache hit the network)...")
 all_players = (
-    [to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys(), batter_history_by_player, batter_future)
+    [to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys(), batter_history_by_player, batter_future, last30_batting)
      for r in batters.itertuples()]
-    + [to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys(), pitcher_history_by_player, pitcher_future)
+    + [to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys(), pitcher_history_by_player, pitcher_future, last30_pitching)
        for r in pitchers.itertuples()]
 )
 with_headshot = sum(1 for p in all_players if p["headshot"])
