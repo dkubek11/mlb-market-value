@@ -1104,21 +1104,26 @@
     return { actual, projected, gap: projected - actual, label: 'ERA', type: 'rate2', threshold: REGRESSION_THRESHOLD.era };
   }
 
-  // gap > 0: current output is better than true talent suggests -- due to
-  // regress toward *worse* (red, down). gap < 0: current output lags true
-  // talent -- due to regress toward *better* (green, up).
+  // gap > 0: current output is better than true talent suggests -- hot,
+  // green, up (due to regress toward worse). gap < 0: current output lags
+  // true talent -- cold, red, down (due to regress toward better).
+  // "Hot/cold" framing: green/up = overperforming right now (hot), red/down =
+  // underperforming right now (cold) -- describes current form, not a
+  // prediction of which way regression is headed (that would be the
+  // opposite color/direction, since an overperforming "hot" player is the
+  // one due to cool off).
   function regressionArrow(record) {
     const sig = regressionSignal(record);
     if (!sig || Math.abs(sig.gap) < sig.threshold) return null;
     return sig.gap > 0
-      ? { symbol: '▼', cls: 'bad', sig }
-      : { symbol: '▲', cls: 'good', sig };
+      ? { symbol: '▲', cls: 'good', sig }
+      : { symbol: '▼', cls: 'bad', sig };
   }
 
   function regressionTagHtml(record) {
     const arrow = regressionArrow(record);
     if (!arrow) return '';
-    const title = arrow.cls === 'bad'
+    const title = arrow.cls === 'good'
       ? `${fmtStatValue(arrow.sig.type, arrow.sig.actual)} vs ${fmtStatValue(arrow.sig.type, arrow.sig.projected)} projected — overperforming, regression likely`
       : `${fmtStatValue(arrow.sig.type, arrow.sig.actual)} vs ${fmtStatValue(arrow.sig.type, arrow.sig.projected)} projected — underperforming, positive regression likely`;
     return `<span class="regression-tag ${arrow.cls}" title="${title}">${arrow.symbol}</span>`;
@@ -1343,7 +1348,7 @@
     let regressionHtml = '';
     const arrow = regressionArrow(record);
     if (arrow) {
-      const word = arrow.cls === 'bad' ? 'overperforming, regression likely' : 'underperforming, positive regression likely';
+      const word = arrow.cls === 'good' ? 'overperforming, regression likely' : 'underperforming, positive regression likely';
       const compsNote = record.nComps ? ` · ${record.nComps} historical comps` : '';
       regressionHtml = `<div class="regression-line ${arrow.cls}"><span class="regression-arrow">${arrow.symbol}</span> ${fmtStatValue(arrow.sig.type, arrow.sig.actual)} ${arrow.sig.label} vs. ${fmtStatValue(arrow.sig.type, arrow.sig.projected)} projected (${word})${compsNote}</div>`;
     }
@@ -1697,36 +1702,117 @@
       ${worstRows}`;
   }
 
+  // Long-Term Contract Value Locks: real per-year projected talent (2027-
+  // 2029, from projectedFutureYears -- see compute_batter/pitcher_
+  // projections_future_years in projections.py) weighed against real
+  // guaranteed contract pay in that same year, not this year's AAV
+  // multiplied out. Uses the exact same live, adjustable composite weights
+  // (BATTER_STAT_CONFIG/PITCHER_STAT_CONFIG) as the rest of the site, just
+  // applied to future-year projected stats instead of this season's real
+  // ones -- reacts to the Weights tab the same way everything else does.
+  // Missing composite inputs (no multi-year projection exists yet for
+  // fielding or wRC+) simply drop out of that year's weighted sum rather
+  // than blocking it, the same graceful-partial-data handling recomputeAll()
+  // already uses everywhere else.
+  function futureCompositePct(p, targetSeason) {
+    const future = p.projectedFutureYears && p.projectedFutureYears[String(targetSeason)];
+    if (!future) return null;
+    const enriched = { ...future };
+    if (p.isBatter && enriched.k_rate != null && enriched.bb_rate != null) {
+      enriched.k_minus_bb = enriched.k_rate - enriched.bb_rate;
+    }
+    const cfg = p.isBatter ? BATTER_STAT_CONFIG : PITCHER_STAT_CONFIG;
+    const w = p.isBatter ? battingWeights : pitchingWeights;
+    const posStats = positionStats[p.position] || {};
+    let total = 0, weightSqSum = 0, any = false;
+    cfg.forEach(s => {
+      const val = enriched[s.key];
+      const ps = posStats[s.key];
+      if (val != null && ps && ps.std > 0) {
+        const rawZ = (val - ps.mean) / ps.std;
+        const z = s.higherBetter ? rawZ : -rawZ;
+        total += z * w[s.key];
+        weightSqSum += w[s.key] * w[s.key];
+        any = true;
+      }
+    });
+    return any && weightSqSum > 0 ? normalCdf(total / Math.sqrt(weightSqSum)) * 100 : null;
+  }
+
+  // Same true-market comp pool the main Recommended Pay figure uses
+  // (non-pre-arb, non-arbitration-eligible), rebuilt fresh each render so it
+  // always reflects the live compPct values recomputeAll() just set.
+  function trueMarketPools() {
+    return {
+      batter: marketPlayers.filter(p => p.isBatter && !isArbEligible(p)),
+      SP: marketPlayers.filter(p => p.position === 'SP' && !isArbEligible(p)),
+      RP: marketPlayers.filter(p => p.position === 'RP' && !isArbEligible(p)),
+    };
+  }
+
+  // Real 3-year lock value: only players with a REAL, GUARANTEED (not
+  // arbitration, not an option year, not a placeholder) contract salary in
+  // all 3 of the next seasons qualify -- "contract only, no arbitration" per
+  // the feature's own name. Each year's projected performance is converted
+  // to a real dollar figure via the same adaptiveCompMedian the rest of the
+  // site uses, then compared against that year's real guaranteed salary.
+  function threeYearLockValue(p, pools) {
+    if (!p.projectedFutureYears) return null;
+    const c = contracts[p.id];
+    if (!c || !c.years) return null;
+    const pool = pools[p.isBatter ? 'batter' : p.position];
+    if (!pool || pool.length === 0) return null;
+
+    const perYear = [];
+    let totalSurplus = 0, totalValue = 0, totalPay = 0;
+    for (let offset = 1; offset <= 3; offset++) {
+      const yr = CURRENT_SEASON + offset;
+      const contractYear = c.years.find(y => y.season === yr && y.type === 'GUARANTEED' && y.salary != null);
+      if (!contractYear) return null;
+      const pct = futureCompositePct(p, yr);
+      if (pct == null) return null;
+      const value = adaptiveCompMedian(pool, pct, 'aav', 'compPct');
+      if (value == null) return null;
+      const surplus = value - contractYear.salary;
+      perYear.push({ season: yr, pct, value, pay: contractYear.salary, surplus });
+      totalSurplus += surplus;
+      totalValue += value;
+      totalPay += contractYear.salary;
+    }
+    return { perYear, totalSurplus, avgValue: totalValue / 3, avgPay: totalPay / 3 };
+  }
+
   function renderLocks() {
-    const locks = marketPlayers.filter(p => {
-      const c = contracts[p.id];
-      if (!c) return false;
-      const multi = (c.years && c.years.length >= 3) || c.totalGuaranteed != null;
-      return multi && p.paySurplus != null;
-    }).sort((a, b) => b.paySurplus - a.paySurplus).slice(0, 10);
-    const rows = locks.length ? locks.map(p => {
-      const keyStat = p.isBatter ? p.stats.xwoba : p.stats.xera;
+    const pools = trueMarketPools();
+    const candidates = marketPlayers
+      .map(p => ({ p, lock: threeYearLockValue(p, pools) }))
+      .filter(x => x.lock != null)
+      .sort((a, b) => b.lock.totalSurplus - a.lock.totalSurplus)
+      .slice(0, 10);
+    const rows = candidates.length ? candidates.map(({ p, lock }) => {
+      const firstYear = lock.perYear[0];
+      const keyStat = p.projectedFutureYears[String(firstYear.season)][p.isBatter ? 'xwoba' : 'xera'];
       const keyType = p.isBatter ? 'avg3' : 'rate2';
       return `<tr class="row-toggle" data-pidx="${pushHomeRow(p)}">
-        <td><div class="name-cell"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
-        <td class="num">${fmtMoney(p.aav)}</td>
+        <td><div class="name-cell"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td class="num">${fmtMoney(lock.avgPay)}</td>
         <td class="num">${fmtStatValue(keyType, keyStat)}</td>
-        <td class="num">${warVal(p)}</td>
-        <td class="num ${p.paySurplus >= 0 ? 'good' : 'bad'}" data-count="${p.paySurplus * 3}" data-count-fmt="signedM">${surplusM(p)} ×3</td>
+        <td class="num">${fmtMoney(lock.avgValue)}</td>
+        <td class="num ${lock.totalSurplus >= 0 ? 'good' : 'bad'}" data-count="${lock.totalSurplus}" data-count-fmt="signedM">${fmtSigned(lock.totalSurplus / 1e6)}M</td>
       </tr>`;
-    }).join('') : '<tr><td colspan="5"><div class="empty">No multi-year contract data in this build — FanGraphs contract detail wasn\'t available when this snapshot was built.</div></td></tr>';
+    }).join('') : '<tr><td colspan="5"><div class="empty">No players with 3 full guaranteed contract years remaining (2027-2029) in this build.</div></td></tr>';
     document.getElementById('locks-card').innerHTML = `
       <div class="preview-head">
-        <h3>Long-Term Contract Value Locks <span class="preview-sub">multi-year deals by 3-yr surplus — fWAR stands in for xWAR</span></h3>
+        <h3>Long-Term Contract Value Locks <span class="preview-sub">real 3-year projections (2027-2029) vs. real guaranteed pay — contract years only, no arbitration</span></h3>
       </div>
       <div class="table-scroll">
         <table>
           <thead>
             <tr>
               <th>Player</th>
-              <th class="num">AAV</th>
-              <th class="num">xwOBA / xERA</th>
-              <th class="num">fWAR</th>
+              <th class="num">Avg Annual Pay</th>
+              <th class="num">${CURRENT_SEASON + 1} xwOBA / xERA</th>
+              <th class="num">Avg Annual Value</th>
               <th class="num">3-Yr Surplus</th>
             </tr>
           </thead>

@@ -21,6 +21,7 @@ from app.db import engine
 from app.pipeline.compute_value import _is_pre_arb
 from app.pipeline.projections import (
     compute_batter_projections, compute_pitcher_projections,
+    compute_batter_projections_future_years, compute_pitcher_projections_future_years,
     BATTER_PROJECTION_STATS, PITCHER_PROJECTION_STATS, blend_projections,
 )
 from app.pipeline.comp_projections import compute_batter_comp_projections, compute_pitcher_comp_projections
@@ -278,6 +279,17 @@ pitcher_comp = compute_pitcher_comp_projections(season)
 batter_proj = blend_projections(batter_marcel, batter_comp, list(BATTER_PROJECTION_STATS.keys()))
 pitcher_proj = blend_projections(pitcher_marcel, pitcher_comp, list(PITCHER_PROJECTION_STATS.keys()))
 
+# Real per-year projected talent level for each of the next 3 seasons (not
+# just this one) -- powers the Long-Term Contract Value Locks section, which
+# weighs a player's projected performance in a given future year against
+# their real guaranteed pay that same year, not a single-season number
+# multiplied out. No comp-based blend here (comp search needs real next-
+# season outcomes to look up, which don't exist yet for 2027+) -- pure
+# Marcel-style regression, age-adjusted forward each year.
+print(f"[{season}] computing 3-year-forward projections for contract-value locks...")
+batter_future = compute_batter_projections_future_years(season)
+pitcher_future = compute_pitcher_projections_future_years(season)
+
 positionStats = {}
 for pos, grp in batters.groupby("position"):
     positionStats[pos] = {}
@@ -439,8 +451,9 @@ batter_history_by_player = _history_rows(hist_batters, BATTER_STATS)
 pitcher_history_by_player = _history_rows(hist_pitchers, PITCHER_STATS)
 
 
-def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map):
+def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map, future_map):
     proj = proj_map.get(int(r.player_id), {})
+    future = future_map.get(int(r.player_id), {})
     debut_date = getattr(r, "debut_date", None)
     # Real accrued MLB service time (years.days) -- the actual figure the
     # CBA's Arb1/2/3 and Super Two rules are based on. Sourced primarily from
@@ -478,6 +491,15 @@ def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map):
         # regression + comparable-player projections; see projections.py).
         "projected": {s: clean(proj.get(s)) for s in proj_stat_keys},
         "nComps": proj.get("nComps", 0),
+        # {season: {stat: value}} for each of the next 3 seasons -- same
+        # regression-based true talent as "projected" above, just age-
+        # adjusted forward multiple years instead of one (see
+        # compute_batter_projections_future_years). Powers the Long-Term
+        # Contract Value Locks section; not comp-blended (see build_dashboard.py).
+        "projectedFutureYears": {
+            str(yr): {s: clean(stats.get(s)) for s in proj_stat_keys}
+            for yr, stats in future.items()
+        },
         # Last 5 completed seasons the player qualified in (may be shorter or
         # empty for young players) -- no salary, see HISTORY_BATTER_Q comment.
         "history": history_map.get(int(r.player_id), []),
@@ -503,9 +525,9 @@ def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map):
 
 print(f"[{season}] fetching headshots (only players missing from the local cache hit the network)...")
 all_players = (
-    [to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys(), batter_history_by_player)
+    [to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys(), batter_history_by_player, batter_future)
      for r in batters.itertuples()]
-    + [to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys(), pitcher_history_by_player)
+    + [to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys(), pitcher_history_by_player, pitcher_future)
        for r in pitchers.itertuples()]
 )
 with_headshot = sum(1 for p in all_players if p["headshot"])

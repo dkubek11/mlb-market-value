@@ -133,16 +133,26 @@ def _apply_age_adjustment(value: float, age: float | None, higher_is_better: boo
     return value * factor
 
 
-def _compute_projections(
-    history_query, season: int, weight_col: str, stat_defs: dict[str, tuple[float, bool]]
-) -> dict[int, dict]:
+def _load_history_and_anchors(history_query, season: int, weight_col: str, stat_defs: dict[str, tuple[float, bool]]):
+    """Shared setup for both the single-season and multi-year projections:
+    the trailing 3-season history plus each stat's league-average anchor
+    (the season immediately before `season`, the same real playing-time-
+    weighted anchor both projection flavors regress toward)."""
     start, end = season - 3, season - 1
     df = pd.read_sql(history_query, engine, params={"start_season": start, "end_season": end})
     if df.empty:
-        return {}
-
+        return None, None
     league_avgs = {stat: _league_avg_by_season(df, stat, weight_col) for stat in stat_defs}
     anchor_avgs = {stat: league_avgs[stat].get(end) for stat in stat_defs}
+    return df, anchor_avgs
+
+
+def _compute_projections(
+    history_query, season: int, weight_col: str, stat_defs: dict[str, tuple[float, bool]]
+) -> dict[int, dict]:
+    df, anchor_avgs = _load_history_and_anchors(history_query, season, weight_col, stat_defs)
+    if df is None:
+        return {}
 
     results: dict[int, dict] = {}
     for pid, grp in df.groupby("player_id"):
@@ -177,6 +187,64 @@ def compute_pitcher_projections(current_season: int) -> dict[int, dict]:
     k_rate, bb_rate, z_swing_rate}} projected from the 3 seasons preceding
     current_season."""
     return _compute_projections(_PITCHER_HISTORY_QUERY, current_season, "ip", PITCHER_PROJECTION_STATS)
+
+
+def _compute_projections_future_years(
+    history_query, season: int, weight_col: str, stat_defs: dict[str, tuple[float, bool]], years_ahead: int = 3
+) -> dict[int, dict[int, dict]]:
+    """Same real-history-weighted regression as _compute_projections -- the
+    same trailing-3-season data, the same per-stat regression constants, the
+    same league-average anchor -- but instead of age-adjusting once for
+    `season` itself, holds that regressed (pre-age) true-talent estimate
+    fixed and re-applies the age curve at `season+1`, `season+2`, ...,
+    `season+years_ahead`. The aging curve is the only thing assumed to move
+    year over year; a player's underlying regressed skill level is treated
+    as constant across the window, same simplifying assumption real front-
+    office flat/aging-curve forecasts commonly make for an outlook this far
+    out. Returns {player_id: {target_season: {stat: value, age}}}."""
+    df, anchor_avgs = _load_history_and_anchors(history_query, season, weight_col, stat_defs)
+    if df is None:
+        return {}
+
+    results: dict[int, dict[int, dict]] = {}
+    for pid, grp in df.groupby("player_id"):
+        grp = grp.sort_values("season", ascending=False)
+        rows = grp.to_dict("records")[:3]
+        birthdate = rows[0]["birthdate"]
+
+        pre_age = {
+            stat: _weighted_regressed_projection(rows, stat, weight_col, anchor_avgs[stat], regression_pt)
+            for stat, (regression_pt, _) in stat_defs.items()
+        }
+
+        by_year: dict[int, dict] = {}
+        for offset in range(1, years_ahead + 1):
+            target_season = season + offset
+            age = _age_as_of(birthdate, target_season)
+            projected = {}
+            for stat, (_, higher_is_better) in stat_defs.items():
+                val = pre_age[stat]
+                if val is not None:
+                    val = round(_apply_age_adjustment(val, age, higher_is_better), 5)
+                projected[stat] = val
+            projected["age"] = age
+            by_year[target_season] = projected
+        results[int(pid)] = by_year
+    return results
+
+
+def compute_batter_projections_future_years(current_season: int, years_ahead: int = 3) -> dict[int, dict[int, dict]]:
+    """Returns {player_id: {target_season: {age, xba, xwoba, ...}}} for each
+    of the `years_ahead` seasons following current_season -- e.g. 2027-2029
+    when current_season=2026. Powers the Long-Term Contract Value Locks
+    section, which needs a real per-year projected talent level to weigh
+    against a player's real guaranteed pay in that same year."""
+    return _compute_projections_future_years(_BATTER_HISTORY_QUERY, current_season, "pa", BATTER_PROJECTION_STATS, years_ahead)
+
+
+def compute_pitcher_projections_future_years(current_season: int, years_ahead: int = 3) -> dict[int, dict[int, dict]]:
+    """Pitcher counterpart of compute_batter_projections_future_years."""
+    return _compute_projections_future_years(_PITCHER_HISTORY_QUERY, current_season, "ip", PITCHER_PROJECTION_STATS, years_ahead)
 
 
 # Weight given to the comp-based (nearest-neighbor) projection vs. the Marcel
