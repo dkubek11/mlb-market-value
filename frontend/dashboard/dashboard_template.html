@@ -2685,6 +2685,52 @@
     return weightedMedian(items, 'value', 'weight');
   }
 
+  // Same proximity-weighted machinery as adaptiveCompMedian, but for the
+  // extreme tail (top/bottom EXTREME_TAIL_EDGE% of the distribution) swaps
+  // the weighted median for a weighted mean of just the half of the
+  // weighted distribution on the anchor's side of the median crossing. A
+  // weighted median is the right call everywhere else -- it keeps one
+  // outlier comp from dragging a typical player's number around -- but at
+  // the very top (or bottom) of the pool that same outlier-resistance
+  // becomes the problem: a real ace whose price is stale (an extension
+  // signed years before a late-career leap, a legacy deal from a different
+  // market) sits closer in raw percentile than anyone else once you're this
+  // far out on the tail, so it can pull the single largest weight in the
+  // whole pool -- and because it's also priced at the bottom of the range,
+  // it can single-handedly set the median before the calculation ever
+  // reaches the genuinely comparable elite comps priced above it. Past this
+  // point the handful of real peers on the correct side of the anchor are
+  // the only informative signal left, so lean on them directly instead of
+  // letting one stale outlier veto them. Identical to adaptiveCompMedian
+  // for every anchor outside the tail.
+  const EXTREME_TAIL_EDGE = 3;
+  function adaptiveCompExtremeMean(pool, anchorPct, valueKey, pctKey = 'compPct') {
+    const edgeDistance = Math.min(anchorPct, 100 - anchorPct);
+    const edgeFactor = 0.5 + 0.5 * Math.min(1, edgeDistance / 50);
+    let scale = PROXIMITY_SCALE * edgeFactor;
+    let weights;
+    while (true) {
+      weights = pool.map(m => Math.exp(-Math.abs(m[pctKey] - anchorPct) / scale));
+      if (effectiveSampleSize(weights) >= MIN_EFFECTIVE_COMPS || scale >= PROXIMITY_SCALE_MAX) break;
+      scale *= PROXIMITY_SCALE_GROWTH;
+    }
+    const items = pool.map((m, i) => ({ value: m[valueKey], weight: weights[i] }));
+    if (edgeDistance > EXTREME_TAIL_EDGE) {
+      return weightedMedian(items, 'value', 'weight');
+    }
+    const sorted = [...items].sort((a, b) => a.value - b.value);
+    const totalWeight = totalOf(sorted, 'weight');
+    let cumulative = 0;
+    let crossingIndex = sorted.length - 1;
+    for (let i = 0; i < sorted.length; i++) {
+      cumulative += sorted[i].weight;
+      if (cumulative >= totalWeight / 2) { crossingIndex = i; break; }
+    }
+    const side = anchorPct >= 50 ? sorted.slice(crossingIndex) : sorted.slice(0, crossingIndex + 1);
+    const sideWeight = totalOf(side, 'weight');
+    return side.reduce((s, it) => s + it.weight * it.value, 0) / sideWeight;
+  }
+
   // Direct peer-comp system for pre-arb/arb-eligible pay, replacing the
   // earlier "open-market value x 40/60/80%" approach. That approach inferred
   // a real dollar figure from the free-agent market, which is a structurally
@@ -3071,13 +3117,25 @@
         p.recommendedSalary = median;
         p.paySurplus = median - p.aav;
 
-        // Pure forward-looking market value: what this player's PROJECTED
-        // (not current) performance says they'd be worth on the open
-        // market -- anchored entirely on projectedPct, not blended with
-        // this season's compPct like recommendedSalary above. Powers the
-        // card's "Next-Season Outlook" / "Pending Free Agent" section.
+        // Forward-looking market value: what this player's future
+        // performance says they'd be worth on the open market. Used to
+        // anchor entirely on projectedPct with zero weight on this season's
+        // real output -- which meant a player having a genuinely bad
+        // platform year (the exact season real free-agent-market teams
+        // would weigh most heavily) still got valued purely off a 3-year
+        // trailing projection that predates the season and has no idea
+        // it's happening. PROJECTED_MARKET_VALUE_BLEND keeps this mostly
+        // forward-looking (more so than recommendedSalary's PROJECTION_BLEND/
+        // ARB_PROJECTION_BLEND above, which anchor a "what should they be
+        // paid right now" number, not a future one) while still letting a
+        // real current-season swing move it, instead of ignoring it outright.
+        const PROJECTED_MARKET_VALUE_BLEND = 0.7;
         p.projectedMarketValue = p.projectedPct != null
-          ? adaptiveCompMedian(compPool, p.projectedPct, 'aav')
+          ? adaptiveCompExtremeMean(
+              compPool,
+              (1 - PROJECTED_MARKET_VALUE_BLEND) * p.compPct + PROJECTED_MARKET_VALUE_BLEND * p.projectedPct,
+              'aav'
+            )
           : null;
       });
 
