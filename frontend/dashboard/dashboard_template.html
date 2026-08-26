@@ -1378,9 +1378,23 @@
       regressionHtml = `<div class="regression-line ${arrow.cls}"><span class="regression-arrow">${arrow.symbol}</span> ${fmtStatValue(arrow.sig.type, arrow.sig.actual)} ${arrow.sig.label} vs. ${fmtStatValue(arrow.sig.type, arrow.sig.projected)} projected (${word})${compsNote}</div>`;
     }
 
+    // Computed here (not just below, where it already existed) because the
+    // Score box's "Recommended pay" line needs it too: recommendedSalary
+    // blends heavily toward projectedPct for arb-eligible players
+    // (ARB_PROJECTION_BLEND=0.65), so for someone actually reaching free
+    // agency soon it's really a forward-looking number wearing a
+    // present-tense label -- misleading when it sits right above a
+    // percentile-performance line showing them well below where they're
+    // paid (that combination reads as "underpaid" when blended so heavily
+    // toward next year's projection, it isn't saying that at all). The
+    // Outlook section below already shows that same forward-looking
+    // concept under its correct label (Projected Free Agent Value), so
+    // this just avoids showing a second, confusingly-similar number under
+    // a label that implies "pay them this right now."
+    const pendingFA = isNearingFreeAgency(record);
     let valueHtml = '';
     if (!record.isPreArb) {
-      const recPayNote = record.recommendedSalary != null
+      const recPayNote = (record.recommendedSalary != null && !pendingFA)
         ? `<div class="card-value-note">Recommended pay: <strong>${fmtMoney(record.recommendedSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.paySurplus / 1e6)}M)</div>`
         : '';
       const arbFloorNote = record.expectedArbFloored
@@ -1406,7 +1420,6 @@
 
     let outlookHtml = '';
     const teamControlled = record.isPreArb || isArbEligible(record);
-    const pendingFA = isNearingFreeAgency(record);
     // A rookie with, say, 0.128 years of service isn't one tier away from
     // arbitration next season -- they're still years away (Super Two's
     // earliest real cutoff is ~2.0 years; standard arb needs 3.0). Showing
