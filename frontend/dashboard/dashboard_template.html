@@ -799,6 +799,7 @@
   <div id="arbitration-view" style="display:none">
     <div class="controls">
       <input class="search" id="arb-search" placeholder="Search player or team..." />
+      <div class="chips" id="arb-year-chips"></div>
       <div class="chips" id="arb-pos-chips"></div>
       <div class="spacer"></div>
       <span class="count" id="arb-count"></span>
@@ -809,9 +810,9 @@
           <tr>
             <th data-sort="name">Player</th>
             <th data-sort="arbYearNum">Arb Year</th>
-            <th class="num" data-sort="aav">Actual AAV</th>
-            <th class="num" data-sort="expectedArbSalary">Expected</th>
-            <th class="num" data-sort="arbSurplus">Surplus</th>
+            <th class="num" data-sort="aav">2026 AAV</th>
+            <th class="num" data-sort="projectedArbSalary">Projected 2027</th>
+            <th class="num" data-sort="projectedArbSurplus">Surplus</th>
           </tr>
         </thead>
         <tbody id="arb-rows"></tbody>
@@ -2014,10 +2015,15 @@
   // year (tier) and position -- separate from the Pre-Arbitration tab
   // (players who haven't reached arbitration yet at all).
   let activeArbPos = 'All';
-  let arbSort = { key: 'arbSurplus', dir: 'desc' };
+  let activeArbYear = 'All';
+  let arbSort = { key: 'projectedArbSurplus', dir: 'desc' };
 
   document.getElementById('arb-pos-chips').innerHTML = POSITIONS.map(p =>
     `<button class="chip${p === 'All' ? ' active' : ''}" data-pos="${p}">${p}</button>`
+  ).join('');
+  const ARB_YEAR_CHIPS = ['All', '1', '2', '3'];
+  document.getElementById('arb-year-chips').innerHTML = ARB_YEAR_CHIPS.map(y =>
+    `<button class="chip${y === 'All' ? ' active' : ''}" data-year="${y}">${y === 'All' ? 'All Arb' : 'Arb ' + y}</button>`
   ).join('');
 
   function renderArbitration() {
@@ -2027,7 +2033,15 @@
       (activeArbPos === 'All' || p.position === activeArbPos) &&
       (q === '' || matchesTeamQuery(p, q))
     );
-    rows.forEach(p => { p.arbYearNum = arbYearNumber(p); });
+    rows.forEach(p => {
+      p.arbYearNum = arbYearNumber(p);
+      // Distinct from the shared p.arbSurplus (this year's expected-vs-actual,
+      // still used on the player card) -- this is next year's projected raise:
+      // projectedArbSalary (already computed elsewhere for the Next-Season
+      // Outlook) minus this year's real AAV.
+      p.projectedArbSurplus = p.projectedArbSalary != null ? p.projectedArbSalary - p.aav : null;
+    });
+    if (activeArbYear !== 'All') rows = rows.filter(p => p.arbYearNum === Number(activeArbYear));
     rows.sort((a, b) => {
       const k = arbSort.key;
       const va = a[k], vb = b[k];
@@ -2038,15 +2052,13 @@
       return arbSort.dir === 'asc' ? cmp : -cmp;
     });
     document.getElementById('arb-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for their card' : '');
-    const allSurplus = allPlayers.filter(p => isArbEligible(p) && p.arbSurplus != null).map(p => Math.abs(p.arbSurplus));
-    const maxSurplus = Math.max(...allSurplus, 1);
     document.getElementById('arb-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
       <tr class="row-toggle" data-idx="${i}">
         <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
         <td>${arbYearShortLabel(p)}</td>
         <td class="num" data-count="${p.aav}" data-count-fmt="money">${fmtMoney(p.aav)}</td>
-        <td class="num" data-count="${p.expectedArbSalary ?? ''}" data-count-fmt="money">${p.expectedArbSalary != null ? fmtMoney(p.expectedArbSalary) : '—'}</td>
-        <td class="num ${p.arbSurplus != null && p.arbSurplus >= 0 ? 'good' : 'bad'}"${p.arbSurplus != null ? ` data-count="${p.arbSurplus}" data-count-fmt="signedM"` : ''}>${p.arbSurplus != null ? fmtSigned(p.arbSurplus / 1e6) + 'M' : '—'}</td>
+        <td class="num" data-count="${p.projectedArbSalary ?? ''}" data-count-fmt="money">${p.projectedArbSalary != null ? fmtMoney(p.projectedArbSalary) : '—'}</td>
+        <td class="num ${p.projectedArbSurplus != null && p.projectedArbSurplus >= 0 ? 'good' : 'bad'}"${p.projectedArbSurplus != null ? ` data-count="${p.projectedArbSurplus}" data-count-fmt="signedM"` : ''}>${p.projectedArbSurplus != null ? fmtSigned(p.projectedArbSurplus / 1e6) + 'M' : '—'}</td>
       </tr>`
     ).join('') : `<tr><td colspan="5"><div class="empty">No arbitration-eligible players match that search.</div></td></tr>`;
     arbRowsCurrent = rows;
@@ -2065,6 +2077,13 @@
     if (!btn) return;
     activeArbPos = btn.dataset.pos;
     document.querySelectorAll('#arb-pos-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
+    renderArbitration();
+  });
+  document.getElementById('arb-year-chips').addEventListener('click', e => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    activeArbYear = btn.dataset.year;
+    document.querySelectorAll('#arb-year-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
     renderArbitration();
   });
 
