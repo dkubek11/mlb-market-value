@@ -364,6 +364,8 @@
   .mini-table tbody tr { cursor: pointer; }
   .mini-table tbody tr:hover td { color: var(--accent); }
   .mini-table tbody tr:last-child td { border-bottom: none; }
+  .rotation-team-row { cursor: pointer; }
+  .rotation-players { margin: 0 0 6px 14px; width: calc(100% - 14px); }
   .explore-card .empty { padding: 10px 0 14px; font-size: 12.5px; text-align: left; }
 
   .locks-card { padding: 16px 18px; margin-bottom: 32px; }
@@ -1530,6 +1532,10 @@
   const marketPlayers = allPlayers.filter(p => !p.isPreArb);
   const carouselState = { nl: 0, al: 0 };
   let homeRowsCurrent = [];
+  // Which teams' rows are expanded in Best/Worst Rotations, by abbr.
+  // Module-level (not reset per-render) so it survives the renderHome()
+  // re-render every other click in that panel already triggers.
+  const expandedRotationTeams = new Set();
   const unknownLeagueWarned = new Set();
 
   function kMinusBbPct(rec) {
@@ -1745,6 +1751,7 @@
       const fips = sps.map(p => p.stats.fip).filter(v => v != null);
       return {
         name: t.name, abbr: t.abbr,
+        sps: [...sps].sort((a, b) => b.score - a.score),
         avgScore: sps.reduce((a, p) => a + p.score, 0) / sps.length,
         avgFip: fips.length ? fips.reduce((a, v) => a + v, 0) / fips.length : null,
         totalIp: sps.reduce((a, p) => a + (p.stats.ip || 0), 0),
@@ -1753,11 +1760,24 @@
     }).filter(Boolean);
     const best = [...aggs].sort((a, b) => b.avgScore - a.avgScore).slice(0, 5);
     const worst = [...aggs].sort((a, b) => a.avgScore - b.avgScore).slice(0, 5);
-    const row = t => `
-      <div class="pick-row" style="cursor:default">
-        <span class="preview-row-name">${t.name} <span class="preview-row-tag">${t.abbr} · avg FIP ${t.avgFip != null ? t.avgFip.toFixed(2) : '—'} · ${Math.round(t.totalIp)} IP · ${fmtMoney(t.payroll)} payroll</span></span>
+    const row = t => {
+      const expanded = expandedRotationTeams.has(t.abbr);
+      const playersHtml = expanded
+        ? `<table class="mini-table rotation-players">
+            <thead><tr><th>Player</th><th class="num">Score</th></tr></thead>
+            <tbody>${t.sps.map(p => `<tr data-pidx="${pushHomeRow(p)}">
+              <td class="name">${p.name}</td>
+              <td class="num ${p.score >= 0 ? 'good' : 'bad'}">${fmtSigned(p.score)}</td>
+            </tr>`).join('')}</tbody>
+          </table>`
+        : '';
+      return `
+      <div class="pick-row rotation-team-row" data-team-toggle="${t.abbr}">
+        <span class="preview-row-name">${expanded ? '▾' : '▸'} ${t.name} <span class="preview-row-tag">${t.abbr} · avg FIP ${t.avgFip != null ? t.avgFip.toFixed(2) : '—'} · ${Math.round(t.totalIp)} IP · ${fmtMoney(t.payroll)} payroll</span></span>
         <span class="preview-row-val ${t.avgScore >= 0 ? 'good' : 'bad'}">${fmtSigned(t.avgScore)}</span>
-      </div>`;
+      </div>
+      ${playersHtml}`;
+    };
     const bestRows = best.length ? best.map(row).join('') : '<div class="empty">No rotations with 2+ qualifying SP in this build.</div>';
     const worstRows = worst.length ? worst.map(row).join('') : '<div class="empty">No rotations with 2+ qualifying SP in this build.</div>';
     document.getElementById('explore-rotations').innerHTML = `
@@ -3536,6 +3556,14 @@
       const lg = arrow.dataset.carousel;
       const dir = Number(arrow.dataset.dir);
       carouselState[lg] = (carouselState[lg] + dir + 2) % 2;
+      renderHome();
+      return;
+    }
+    const teamToggle = e.target.closest('[data-team-toggle]');
+    if (teamToggle) {
+      const abbr = teamToggle.dataset.teamToggle;
+      if (expandedRotationTeams.has(abbr)) expandedRotationTeams.delete(abbr);
+      else expandedRotationTeams.add(abbr);
       renderHome();
       return;
     }
