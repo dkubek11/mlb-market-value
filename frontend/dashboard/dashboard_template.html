@@ -649,6 +649,7 @@
         <button class="nav-drop-item" data-tab="bullpen">Bullpen<span class="nav-drop-sub">relief pitchers</span></button>
       </div>
     </div>
+    <button class="nav-item" data-tab="arbitration">Arbitration</button>
     <button class="nav-item" data-tab="rookies">Pre-Arbitration</button>
     <button class="nav-item" data-tab="custom">Weights</button>
     <div class="nav-drop">
@@ -791,6 +792,29 @@
           </tr>
         </thead>
         <tbody id="bullpen-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="arbitration-view" style="display:none">
+    <div class="controls">
+      <input class="search" id="arb-search" placeholder="Search player or team..." />
+      <div class="chips" id="arb-pos-chips"></div>
+      <div class="spacer"></div>
+      <span class="count" id="arb-count"></span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th data-sort="name">Player</th>
+            <th data-sort="arbYearNum">Arb Year</th>
+            <th class="num" data-sort="aav">Actual AAV</th>
+            <th class="num" data-sort="expectedArbSalary">Expected</th>
+            <th class="num" data-sort="arbSurplus">Surplus</th>
+          </tr>
+        </thead>
+        <tbody id="arb-rows"></tbody>
       </table>
     </div>
   </div>
@@ -1986,6 +2010,73 @@
     });
   });
 
+  // --- Arbitration tab: currently arb-eligible players, sortable by arb
+  // year (tier) and position -- separate from the Pre-Arbitration tab
+  // (players who haven't reached arbitration yet at all).
+  let activeArbPos = 'All';
+  let arbSort = { key: 'arbSurplus', dir: 'desc' };
+
+  document.getElementById('arb-pos-chips').innerHTML = POSITIONS.map(p =>
+    `<button class="chip${p === 'All' ? ' active' : ''}" data-pos="${p}">${p}</button>`
+  ).join('');
+
+  function renderArbitration() {
+    const q = document.getElementById('arb-search').value.trim().toLowerCase();
+    let rows = allPlayers.filter(p =>
+      isArbEligible(p) &&
+      (activeArbPos === 'All' || p.position === activeArbPos) &&
+      (q === '' || matchesTeamQuery(p, q))
+    );
+    rows.forEach(p => { p.arbYearNum = arbYearNumber(p); });
+    rows.sort((a, b) => {
+      const k = arbSort.key;
+      const va = a[k], vb = b[k];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+      return arbSort.dir === 'asc' ? cmp : -cmp;
+    });
+    document.getElementById('arb-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for their card' : '');
+    const allSurplus = allPlayers.filter(p => isArbEligible(p) && p.arbSurplus != null).map(p => Math.abs(p.arbSurplus));
+    const maxSurplus = Math.max(...allSurplus, 1);
+    document.getElementById('arb-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
+      <tr class="row-toggle" data-idx="${i}">
+        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td>${arbYearShortLabel(p)}</td>
+        <td class="num" data-count="${p.aav}" data-count-fmt="money">${fmtMoney(p.aav)}</td>
+        <td class="num" data-count="${p.expectedArbSalary ?? ''}" data-count-fmt="money">${p.expectedArbSalary != null ? fmtMoney(p.expectedArbSalary) : '—'}</td>
+        <td class="num ${p.arbSurplus != null && p.arbSurplus >= 0 ? 'good' : 'bad'}"${p.arbSurplus != null ? ` data-count="${p.arbSurplus}" data-count-fmt="signedM"` : ''}>${p.arbSurplus != null ? fmtSigned(p.arbSurplus / 1e6) + 'M' : '—'}</td>
+      </tr>`
+    ).join('') : `<tr><td colspan="5"><div class="empty">No arbitration-eligible players match that search.</div></td></tr>`;
+    arbRowsCurrent = rows;
+  }
+  let arbRowsCurrent = [];
+
+  document.getElementById('arb-rows').addEventListener('click', e => {
+    const row = e.target.closest('.row-toggle');
+    if (!row) return;
+    openPlayerCard(arbRowsCurrent[Number(row.dataset.idx)]);
+  });
+
+  document.getElementById('arb-search').addEventListener('input', renderArbitration);
+  document.getElementById('arb-pos-chips').addEventListener('click', e => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    activeArbPos = btn.dataset.pos;
+    document.querySelectorAll('#arb-pos-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
+    renderArbitration();
+  });
+
+  document.querySelectorAll('#arbitration-view thead th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      arbSort.dir = arbSort.key === key && arbSort.dir === 'desc' ? 'asc' : 'desc';
+      arbSort.key = key;
+      renderArbitration();
+    });
+  });
+
   // --- Rotation tab (v2: market-priced starters) ---
   let rotationSort = { key: 'fip', dir: 'asc' };
   function rotationVal(p, key) {
@@ -2410,15 +2501,31 @@
   function arbServicePercent(p) {
     return tierFromServiceYears(p.serviceYears);
   }
-  function arbYearLabel(p) {
+  // Shared by arbYearLabel (full sentence, used on the player card) and the
+  // Arbitration tab (short label + sortable numeric year).
+  function arbYearParts(p) {
     const svc = p.serviceYears != null ? p.serviceYears : 3;
     const isSuperTwo = svc < 3.0;
     const yearNum = isSuperTwo
       ? Math.max(1, Math.min(4, Math.floor(svc) - 1))
       : Math.max(1, Math.min(3, Math.floor(svc) - 2));
-    const totalYears = isSuperTwo ? 4 : 3;
+    return { yearNum, totalYears: isSuperTwo ? 4 : 3, isSuperTwo };
+  }
+  function arbYearLabel(p) {
+    const { yearNum, totalYears, isSuperTwo } = arbYearParts(p);
     const basis = p.serviceYearsExact ? 'actual service time' : 'estimated service time';
     return `${isSuperTwo ? 'Super Two, ' : ''}year ${yearNum} of ${totalYears} (${basis})`;
+  }
+  // Sortable numeric year (1-4) plus a compact table label ("Arb 2" /
+  // "Super Two 3"). Sorting by this groups players by tier the way "what
+  // year of arbitration are they in" is normally meant, rather than by raw
+  // continuous service time.
+  function arbYearNumber(p) {
+    return arbYearParts(p).yearNum;
+  }
+  function arbYearShortLabel(p) {
+    const { yearNum, isSuperTwo } = arbYearParts(p);
+    return isSuperTwo ? `Super Two ${yearNum}` : `Arb ${yearNum}`;
   }
 
   function fmtStatValueExt(type, v) {
@@ -3251,7 +3358,7 @@
   });
 
   // --- Topbar nav ---
-  const TAB_VIEWS = ['home', 'players', 'rotation', 'bullpen', 'rookies', 'teams', 'custom'];
+  const TAB_VIEWS = ['home', 'players', 'rotation', 'bullpen', 'arbitration', 'rookies', 'teams', 'custom'];
   function switchTab(name) {
     currentTab = name;
     document.querySelectorAll('.nav-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
@@ -3336,6 +3443,7 @@
     renderPlayers();
     renderRotation();
     renderBullpen();
+    renderArbitration();
     renderRookies();
     renderTeams();
     renderCustomScore();
