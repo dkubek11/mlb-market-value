@@ -1569,24 +1569,27 @@
     return { gap, projected, label: 'ERA', type: 'rate2', threshold: 0.4 };
   }
 
-  // Hot vs Cold is specifically a last-30-real-days signal -- how a player
-  // is doing lately -- not the season-to-date over/underperforming tag shown
-  // elsewhere on cards/lists (regressionSignal/regressionArrow above, which
-  // stays season-long there on purpose, a different, still-valid concept).
-  // Compared against the same season-long projected true talent as
-  // everywhere else; only the "actual" side is a real trailing-30-day stat
-  // (record.last30, from the MLB Stats API's byDateRange split -- see
-  // build_dashboard.py). Threshold is wider than the season-long one
-  // (0.035 AVG / 0.75 ERA vs 0.02 / 0.4) since a ~25-game window is
-  // naturally noisier than a full season at the same underlying skill level.
+  // Hot vs Cold is a real streak signal: how a player's last 30 real days
+  // compares to their OWN season, not to a modeled projection -- a
+  // different concept from the season-to-date over/underperforming tag
+  // shown elsewhere on cards/lists (regressionSignal/regressionArrow above,
+  // which compares season-to-date actual against Marcel + comp projected
+  // true talent, and stays that way there on purpose). "projected" in the
+  // returned shape holds the player's season AVG/ERA here, not a
+  // projection -- named to match regressionSignal/mockSig's shape so the
+  // shared row renderer below (sig.projected used as the % delta divisor)
+  // works unchanged for all three. Threshold is wider than the season-long
+  // regression signal's (0.035 AVG / 0.75 ERA vs 0.02 / 0.4) since a
+  // ~25-game window is naturally noisier than a full season at the same
+  // underlying skill level.
   const LAST30_THRESHOLD = { ba: 0.035, era: 0.75 };
   function last30Signal(record) {
     if (record.last30 == null) return null;
-    const projected = record.projected && (record.isBatter ? record.projected.xba : record.projected.xera);
-    if (projected == null) return null;
+    const seasonStat = record.isBatter ? record.stats.ba : record.stats.era;
+    if (seasonStat == null) return null;
     return record.isBatter
-      ? { actual: record.last30, projected, gap: record.last30 - projected, label: 'AVG (L30)', type: 'avg3', threshold: LAST30_THRESHOLD.ba }
-      : { actual: record.last30, projected, gap: projected - record.last30, label: 'ERA (L30)', type: 'rate2', threshold: LAST30_THRESHOLD.era };
+      ? { actual: record.last30, projected: seasonStat, gap: record.last30 - seasonStat, label: 'AVG (L30 vs season)', type: 'avg3', threshold: LAST30_THRESHOLD.ba }
+      : { actual: record.last30, projected: seasonStat, gap: seasonStat - record.last30, label: 'ERA (L30 vs season)', type: 'rate2', threshold: LAST30_THRESHOLD.era };
   }
   function last30Arrow(record) {
     const sig = last30Signal(record);
@@ -1638,7 +1641,7 @@
       : '';
     const sublabel = isMock
       ? 'MOCK example deltas — real signal needs last-30-days data'
-      : 'last 30 real days vs. Marcel + comp projected true talent';
+      : 'last 30 real days vs. this season';
     document.getElementById('explore-hot-cold').innerHTML = `
       <div class="preview-head">
         <h3>Hot vs Cold <span class="preview-sub">${sublabel}</span></h3>
