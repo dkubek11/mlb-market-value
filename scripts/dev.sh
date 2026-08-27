@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Dev script — apply migrations, rebuild the dashboard, and run the backend API
-# which serves the dashboard at http://localhost:8000/.
+# Dev script — apply migrations and run the backend API which serves the
+# dashboard at http://localhost:8000/.
 #
 #   scripts/dev.sh
 #
 # Starts:
 #   1. Migrations (alembic upgrade head, idempotent)
-#   2. Dashboard build: build_dashboard.py + splice_dashboard.py -> dashboard_final.html
-#   3. Backend: uvicorn app.main:app --reload -> http://localhost:8000  (API + docs + dashboard)
+#   2. Backend: uvicorn app.main:app --reload -> http://localhost:8000  (API + docs + dashboard)
+#
+# The dashboard is rendered live by the API: the / route inlines the current
+# data snapshot and fonts into frontend/dashboard/dashboard_template.html on
+# request, so there is no offline build step.
 #
 # Database: SQLite by default (backend/mlb_market_value.db). Override with DATABASE_URL.
 # Requires: backend/.venv (python venv).
@@ -15,12 +18,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND="$ROOT/backend"
-DASHBOARD="$ROOT/frontend/dashboard"
 VENV_PYTHON="$BACKEND/.venv/bin/python"
 
 export PYTHONPATH="$BACKEND"
-# Absolute SQLite path so the same DATABASE_URL works from any cwd (migrations,
-# the dashboard build, and uvicorn each run from a different directory).
+# Absolute SQLite path so the same DATABASE_URL works from any cwd (migrations
+# and uvicorn each run from a different directory).
 export DATABASE_URL="${DATABASE_URL:-sqlite:///${BACKEND}/mlb_market_value.db}"
 
 # --- sanity checks -----------------------------------------------------------
@@ -31,14 +33,6 @@ echo "==> applying migrations (alembic upgrade head)"
 (
   cd "$BACKEND"
   "$VENV_PYTHON" -m alembic upgrade head
-)
-
-# --- rebuild the served dashboard --------------------------------------------
-echo "==> rebuilding dashboard (build_dashboard.py + splice_dashboard.py)"
-(
-  cd "$DASHBOARD"
-  "$VENV_PYTHON" build_dashboard.py
-  "$VENV_PYTHON" splice_dashboard.py
 )
 
 # --- run backend (serves API + dashboard) ------------------------------------

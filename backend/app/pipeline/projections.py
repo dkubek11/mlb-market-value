@@ -95,9 +95,16 @@ def _league_avg_by_season(df: pd.DataFrame, value_col: str, weight_col: str) -> 
     return out
 
 
-def _age_as_of(birthdate: date | None, season: int) -> float | None:
+def _age_as_of(birthdate: date | str | None, season: int) -> float | None:
     if birthdate is None:
         return None
+    # pandas read_sql returns DATE columns as ISO-8601 strings on SQLite
+    # (Postgres yields real date objects); normalize so both backends work.
+    if isinstance(birthdate, str):
+        try:
+            birthdate = date.fromisoformat(birthdate[:10])
+        except ValueError:
+            return None
     ref = date(season, 7, 1)
     years = ref.year - birthdate.year
     if (ref.month, ref.day) < (birthdate.month, birthdate.day):

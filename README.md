@@ -16,7 +16,7 @@ MLB Market Value explores the relationship between player salaries and on-field 
 
 ### Quick start (SQLite)
 
-The fastest way to run the project locally is `scripts/dev.sh` — it sets up the database, builds the dashboard, and starts the server on `:8000`:
+The fastest way to run the project locally is `scripts/dev.sh` — it sets up the database and starts the server on `:8000`:
 
 ```bash
 python -m venv backend/.venv                                   # first time only
@@ -73,7 +73,7 @@ SEASON=2026 HISTORY_SEASONS=3 docker compose up -d --build
 
 ### Automated nightly refresh (Windows)
 
-`scripts/nightly_refresh.ps1` runs the full pipeline (download data → compute values → rebuild the dashboard) and logs to `scripts/logs/`. It's registered as a Windows Task Scheduler job (`MLBMarketValueNightlyRefresh`, daily at 3am, with catch-up-if-missed enabled) and runs whether or not any app is open. See [README.local.md](README.local.md) for registration details.
+`scripts/nightly_refresh.ps1` runs the full pipeline (download data → compute values) and logs to `scripts/logs/`. It's registered as a Windows Task Scheduler job (`MLBMarketValueNightlyRefresh`, daily at 3am, with catch-up-if-missed enabled) and runs whether or not any app is open. The dashboard reads the refreshed data on the next page load (its snapshot cache expires after 30 minutes). See [README.local.md](README.local.md) for registration details.
 
 ## Architecture
 
@@ -86,7 +86,7 @@ SEASON=2026 HISTORY_SEASONS=3 docker compose up -d --build
 
 ### Backend and frontend
 
-The backend is a **Python/FastAPI** service backed by Postgres (SQLAlchemy + Alembic migrations). The dashboard is a single, self-contained HTML file generated from the database — no separate frontend server or build toolchain. It's rebuilt automatically whenever Docker or `scripts/dev.sh` starts. To edit it, change `frontend/dashboard/dashboard_template.html` and re-run the build; never hand-edit the generated `dashboard_final.html`.
+The backend is a **Python/FastAPI** service backed by Postgres (SQLAlchemy + Alembic migrations). The dashboard is a single HTML file (`dashboard_template.html`) that the API renders live: the `/` route inlines the current data snapshot and fonts at request time, so there's no separate frontend server, build toolchain, or offline build step. Edits to `frontend/dashboard/dashboard_template.html` take effect on the next page load.
 
 ### Data sources
 

@@ -1,18 +1,11 @@
 """Builds the dashboard's data payload from the live database.
 
-This is the single source of truth for the shape of the data the dashboard
-renders. It is used by two consumers so the served content is always identical:
-
-1. The FastAPI endpoint ``GET /api/dashboard`` (see app/main.py) -- the live
-   path. The browser fetches this JSON at page load and renders the template
-   directly; no build step, no generated HTML.
-2. ``frontend/dashboard/build_dashboard.py`` -- the offline/self-contained
-   path. It calls :func:`build_dashboard_payload` and splices the result into
-   the template, preserving the ability to produce a single-file dashboard
-   that can be opened from disk or emailed.
-
-Both paths share the exact same queries, projections, and serialization, so a
-snapshot built offline and the live API can never diverge.
+The dashboard is served live: the FastAPI ``/`` route (see app/main.py)
+renders ``dashboard_template.html`` with a snapshot computed by
+``frontend/dashboard/build_dashboard.py``'s :func:`build_dashboard_data`,
+while ``GET /api/dashboard`` exposes :func:`build_dashboard_payload` here as
+JSON for any client that wants the data without the HTML. There is no offline
+HTML build step.
 """
 
 from __future__ import annotations
@@ -213,10 +206,8 @@ def _fetch_contracts() -> dict[int, dict]:
 
 
 def build_dashboard_payload(season: int, *, fetch_live_contracts: bool = True) -> dict:
-    """Query the live DB and return the full dashboard payload as a dict.
-
-    The returned shape is the exact contract consumed by
-    ``frontend/dashboard/dashboard_template.html``:
+    """Query the live DB and return the dashboard payload as a dict for the
+    ``GET /api/dashboard`` endpoint:
 
     {
       "allPlayers": [...],       # qualified batters + pitchers with projections

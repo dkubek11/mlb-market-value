@@ -12,15 +12,25 @@ FANGRAPHS_FIELDING_API = "https://www.fangraphs.com/api/leaders/major-league/dat
 
 
 def fetch_oaa_frv(season: int) -> dict[int, dict]:
-    """Outs Above Average and Fielding Run Value, both from Statcast. Already
-    one row per player-season (pre-aggregated across positions by Baseball Savant)."""
-    df = pb.statcast_outs_above_average(season, pos="all", min_att=0)
+    """Outs Above Average and Fielding Run Value, both from Statcast. OAA is
+    position-specific and Baseball Savant no longer serves a CSV export for
+    the old ``pos=all`` view (it returns the HTML leaderboard page instead),
+    so each position group is fetched separately and summed per player for
+    players who appear in both -- the closest equivalent of the old
+    per-player aggregated view. Best-effort like fetch_drs: a site change or
+    network hiccup degrades fielding data rather than failing the ingest."""
     result: dict[int, dict] = {}
-    for _, row in df.iterrows():
-        result[int(row["player_id"])] = {
-            "oaa": clean_nan(row["outs_above_average"]),
-            "frv": clean_nan(row["fielding_runs_prevented"]),
-        }
+    for pos in ("if", "of"):
+        try:
+            df = pb.statcast_outs_above_average(season, pos=pos, min_att=0)
+        except Exception as exc:  # noqa: BLE001 -- best-effort scrape like fetch_drs
+            print(f"WARNING: Statcast OAA fetch failed for pos={pos} ({exc!r}); continuing without that group")
+            continue
+        for _, row in df.iterrows():
+            pid = int(row["player_id"])
+            entry = result.setdefault(pid, {"oaa": 0.0, "frv": 0.0})
+            entry["oaa"] += clean_nan(row["outs_above_average"]) or 0
+            entry["frv"] += clean_nan(row["fielding_runs_prevented"]) or 0
     return result
 
 

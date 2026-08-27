@@ -33,11 +33,11 @@ uvicorn app.main:app --reload
 That's it. The database file `mlb_market_value.db` is created automatically in `backend/`.
 For SQLite local dev you do **not** need a `.env` file (see §2 below).
 
-The dashboard is a **single self-contained HTML file** — no separate frontend
-server or build toolchain. `GET /` serves `frontend/dashboard/dashboard_final.html`
-(when built) or the raw `dashboard_template.html` (before the first splice). To
-regenerate it after data changes, run the two scripts in `frontend/dashboard/`
-(`build_dashboard.py` → `splice_dashboard.py`), or just re-run `scripts/dev.sh`.
+The dashboard is a **single HTML file** — no separate frontend server or build
+toolchain. `GET /` renders `frontend/dashboard/dashboard_template.html` with the
+current data snapshot and fonts inlined at request time, so there is no offline
+build step. Edits to the template show up on the next page load; after a data
+refresh, reload the page (the API's snapshot cache expires after 30 minutes).
 
 ## What's Different
 
@@ -48,7 +48,7 @@ regenerate it after data changes, run the two scripts in `frontend/dashboard/`
 | `.env` needed | No — SQLite via `DATABASE_URL` override | Yes — `DATABASE_URL` required |
 | Migrations | `alembic upgrade head` (dev.sh does it) | Automatic on container boot |
 | Data ingest | Manual (`python -m app.pipeline.run_ingest`) | Automatic on container boot |
-| Frontend dev | All-Python single-file build, served at `/` | Same, served by API container |
+| Frontend dev | Single HTML template rendered live at `/` | Same, served by API container |
 | Production parity | Lower (SQLite dialect) | Exact (Postgres 16) |
 
 ## Setup in Detail
@@ -114,26 +114,16 @@ The dashboard is served at `http://localhost:8000/`. API docs are at `http://loc
 
 ### 6. Frontend development (optional)
 
-The dashboard is the all-Python single-file build in
-[`frontend/dashboard/`](frontend/dashboard/) — a static HTML/JS/CSS template
-that `splice_dashboard.py` bakes data into. There is no separate frontend
-server or build toolchain.
+The dashboard is a single HTML/JS/CSS template,
+[`frontend/dashboard/dashboard_template.html`](frontend/dashboard/), that the
+API renders live — no separate frontend server or build toolchain, and no
+offline build step. Edit the template and reload the page to see changes.
 
-To regenerate the offline dashboard after a data refresh (run from `backend/`
-with the venv active so the SQLite DB path and `app` imports resolve):
-
-```bash
-cd backend
-DATABASE_URL="sqlite:///./mlb_market_value.db" .venv/bin/python ../frontend/dashboard/build_dashboard.py
-DATABASE_URL="sqlite:///./mlb_market_value.db" .venv/bin/python ../frontend/dashboard/splice_dashboard.py
-```
-
-That writes `frontend/dashboard/dashboard_data.json` then splices it (plus the
-fonts) into `frontend/dashboard/dashboard_final.html`. Open that file directly,
-or serve it — `uvicorn`'s `/` route prefers `dashboard_final.html` when it
-exists and falls back to the raw template otherwise. Edits to
-`frontend/dashboard/dashboard_template.html` (the CSS/JS source) show up on the
-next splice.
+The API's `/` route inlines the current data snapshot (computed by
+`frontend/dashboard/build_dashboard.py`'s `build_dashboard_data()`) and the
+fonts at request time. The rendered page is cached for 30 minutes; pass
+`?refresh=1` to force a fresh snapshot. `GET /api/dashboard` returns the same
+data as JSON for any client that wants it without the HTML.
 
 ### 7. Validate the API contract (optional)
 
@@ -191,25 +181,13 @@ DATABASE_URL="sqlite:///./mlb_market_value.db" python -m app.pipeline.run_ingest
 DATABASE_URL="sqlite:///./mlb_market_value.db" python -m app.pipeline.run_compute_value --season 2023
 ```
 
-## Dashboard: Offline Snapshot (all-Python)
+## Dashboard: Live Rendering
 
-The dashboard is a **self-contained offline HTML file** — the same model as the
-original repo. `build_dashboard.py` queries the DB and writes
-`dashboard_data.json`; `splice_dashboard.py` inlines that JSON plus the fonts
-into `dashboard_final.html`. The result opens from disk or can be emailed —
-no server required. `GET /api/dashboard` also returns the same payload live for
-any future client that wants it.
-
-```bash
-cd frontend/dashboard
-DATABASE_URL="sqlite:///../../backend/mlb_market_value.db" python build_dashboard.py
-python splice_dashboard.py
-# open dashboard_final.html
-```
-
-The `GET /` route on `uvicorn` serves `dashboard_final.html` when present, so
-after splicing, `http://localhost:8000/` shows the same dashboard without
-opening the file.
+The dashboard is a **single HTML file** (`dashboard_template.html`) that the
+API renders live — there is no offline build or snapshot file. `GET /` inlines
+the current data snapshot and fonts at request time and caches the rendered
+page for 30 minutes. `GET /api/dashboard` returns the same data as JSON for any
+client that wants it without the HTML.
 
 ## Containerized Stack (Docker Compose)
 
@@ -253,12 +231,9 @@ The task only runs while the machine is on; if asleep/off at 3am, `-StartWhenAva
 Make sure the venv is activated and you ran `pip install -r requirements.txt`.
 
 **Dashboard shows an error instead of the page**
-You're running the API from the repo root or wrong directory, or the dashboard
-hasn't been spliced yet. The API serves `frontend/dashboard/dashboard_final.html`
-(if present) or the raw `dashboard_template.html`, relative to the backend
-(`main.py`). Run `uvicorn` from `backend/` (or set `PYTHONPATH=backend`), and
-run `build_dashboard.py` + `splice_dashboard.py` if the `/` route shows an
-unrendered template.
+You're running the API from the repo root or wrong directory. The `/` route
+renders `frontend/dashboard/dashboard_template.html` relative to the backend
+(`main.py`). Run `uvicorn` from `backend/` (or set `PYTHONPATH=backend`).
 
 **Dashboard shows "No qualified players found for the YYYY season yet"**
 The season hasn't been ingested (or players don't meet the 150 PA / 50 IP

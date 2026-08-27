@@ -9,12 +9,11 @@
 # After up:  http://localhost:8000/        -> dashboard
 #            http://localhost:8000/docs    -> API docs
 #
-# The dashboard is a self-contained offline HTML file (dashboard_final.html)
-# baked from the DB by build_dashboard.py + splice_dashboard.py during the
-# container entrypoint (run_all.py). The bind mount below makes
-# frontend/dashboard on the host the live source inside the container, so you
-# can edit the template and re-splice, or re-run `up --build` -- HTML/JS/CSS
-# changes need no image rebuild.
+# The dashboard is served live by the API: the / route renders
+# dashboard_template.html with the current DB snapshot + fonts inlined at
+# request time (build_dashboard.py's build_dashboard_data()). The bind mount
+# below makes frontend/dashboard on the host the live source inside the
+# container, so template/asset edits need no image rebuild.
 name: mlb-market-value
 
 services:
@@ -67,14 +66,14 @@ services:
     mem_limit: 4g
     ports:
       - "8000:8000"
-    # Live source for dashboard template edits -- the container entrypoint
-    # re-splices from this dir on boot, so no image rebuild is needed for
-    # HTML/JS/CSS changes.
+    # Live source for dashboard template/assets -- the API renders the
+    # template from this dir at request time, so no image rebuild is needed
+    # for HTML/CSS/JS changes.
     volumes:
       - ./frontend/dashboard:/app/frontend/dashboard
-    # Entrypoint: migrations -> conditional ingest -> compute value -> dashboard
-    # build -> boot uvicorn. Idempotent: seasons already in the DB are skipped,
-    # so restarts don't re-fetch from the network. Override with
+    # Entrypoint: migrations -> conditional ingest -> compute value -> boot
+    # uvicorn. Idempotent: seasons already in the DB are skipped, so restarts
+    # don't re-fetch from the network. Override with
     # `docker compose exec api python -m app.pipeline.run_all --migrate-only`
     # for a one-shot schema job, or adjust SEASON/HISTORY_SEASONS env vars.
     command: >

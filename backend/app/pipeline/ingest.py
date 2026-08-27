@@ -1,6 +1,6 @@
 import re
 import unicodedata
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -134,6 +134,20 @@ def _upsert_teams(db: Session, season: int) -> None:
         )
 
 
+def _parse_bio_date(value: object) -> date | None:
+    """MLB Stats API returns birthDate/mlbDebutDate as ISO-8601 strings; the
+    Player columns are real Date types and SQLite (unlike Postgres) will not
+    coerce strings at the driver level, so normalize before merge."""
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value[:10])
+        except ValueError:
+            return None
+    return None
+
+
 def _upsert_players(db: Session, player_ids: set[int]) -> None:
     bios = mlb_stats_api.fetch_people_bio(sorted(player_ids))
     for pid in player_ids:
@@ -142,10 +156,10 @@ def _upsert_players(db: Session, player_ids: set[int]) -> None:
             Player(
                 player_id=pid,
                 full_name=bio.get("full_name") or f"Unknown ({pid})",
-                birthdate=bio.get("birthdate"),
+                birthdate=_parse_bio_date(bio.get("birthdate")),
                 bats=bio.get("bats"),
                 throws=bio.get("throws"),
-                debut_date=bio.get("debut_date"),
+                debut_date=_parse_bio_date(bio.get("debut_date")),
             )
         )
 

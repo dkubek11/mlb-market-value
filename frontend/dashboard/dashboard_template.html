@@ -22,7 +22,9 @@
       --border: rgba(240,230,209,0.14); --ink: #f0e6d2; --ink-dim: #b7a586;
       --accent: #dba53f; --accent-ink: #1d170f;
       --good: #74ac78; --good-soft: rgba(116,172,120,0.18);
-      --bad: #db7259; --bad-soft: rgba(219,114,89,0.18);
+    --bad: #db7259; --bad-soft: rgba(219,114,89,0.18);
+    --cool: #6d9fd8;
+      --cool: #6d9fd8;
       --chip-bg: #362b1d; --chip-active-bg: #dba53f; --chip-active-ink: #1d170f;
       --field-grass: #16241a; --field-infield: #20301f; --field-dirt: #7a5636; --field-line: rgba(240,230,209,0.55); --field-base: #f0e6d2;
       --paper-noise-opacity: 0.05;
@@ -34,7 +36,9 @@
       --border: rgba(42,32,21,0.16); --ink: #2a2015; --ink-dim: #6b5a3f;
       --accent: #a8752a; --accent-ink: #faf3e2;
       --good: #3d6b45; --good-soft: rgba(61,107,69,0.13);
-      --bad: #a33b2d; --bad-soft: rgba(163,59,45,0.13);
+    --bad: #a33b2d; --bad-soft: rgba(163,59,45,0.13);
+    --cool: #4a7ac2;
+      --cool: #4a7ac2;
       --chip-bg: #ecdcb8; --chip-active-bg: #a8752a; --chip-active-ink: #faf3e2;
       --field-grass: #9dbd8f; --field-infield: #8bae7c; --field-dirt: #b8875a; --field-line: rgba(250,243,226,0.9); --field-base: #faf3e2;
       --paper-noise-opacity: 0.05;
@@ -163,7 +167,13 @@
   .count { font-size: 12px; color: var(--ink-dim); font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; }
 
   .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
-  table { border-collapse: collapse; width: 100%; min-width: 720px; }
+  table { border-collapse: collapse; width: 100%; }
+  /* The full-width data views (Players, Rotation, Bullpen, Locks, etc.) are
+     wide, so they keep a readable minimum width and scroll horizontally
+     inside .table-scroll on narrow screens. This must NOT leak to compact
+     tables (mini-tables in the Explore cards, the card's history table),
+     which are meant to fit their container exactly. */
+  .table-scroll table { min-width: 720px; }
   thead th {
     text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--ink-dim); padding: 10px 14px; border-bottom: 1px solid var(--border);
@@ -175,7 +185,9 @@
   tbody tr:last-child td { border-bottom: none; }
   tbody tr:hover { background: var(--surface-2); }
   td.num { font-family: "Courier Prime", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
-  .name-cell { display: flex; flex-direction: column; }
+  .name-cell { display: flex; flex-direction: column; min-width: 0; }
+  .name-cell > span:first-child { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-weight: 600; }
+  .name-cell .team-tag { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .team-tag {
     font-size: 11px; color: var(--ink-dim); font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
   }
@@ -289,7 +301,7 @@
     text-align: left; cursor: pointer;
   }
   .carousel-row:hover { background: rgba(255,255,255,0.13); }
-  .carousel-row-name { font-weight: 600; color: #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .carousel-row-name { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-weight: 600; color: #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .carousel-row-tag { color: rgba(226,232,240,0.62); font-size: 10.5px; font-family: "Courier Prime", monospace; }
   .carousel-row-val {
     font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-weight: 700;
@@ -311,7 +323,7 @@
     letter-spacing: 0.01em; margin: 6px 0 18px;
   }
   .explore-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px; }
-  .explore-card { padding: 16px 18px; }
+  .explore-card { padding: 16px 18px; min-width: 0; }
   .explore-card.wide { grid-column: 1 / -1; }
   .explore-card .preview-head { margin-bottom: 4px; }
   .explore-card .preview-head h3, .locks-card .preview-head h3 {
@@ -335,7 +347,7 @@
     text-transform: uppercase; color: var(--ink-dim); margin: 8px 0 2px;
   }
   .explore-subhead.hot { color: var(--bad); }
-  .explore-subhead.cold { color: var(--good); }
+  .explore-subhead.cold { color: var(--cool); }
   .pick-row {
     display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
     background: none; border: none; border-bottom: 1px solid var(--border); padding: 6px 0;
@@ -343,23 +355,25 @@
   }
   .pick-row:last-of-type { border-bottom: none; }
   .pick-row:hover .preview-row-name { color: var(--accent); }
+  .pick-row .preview-row-name { min-width: 0; }
   .tier-block { margin-bottom: 10px; }
   .tier-block:last-child { margin-bottom: 0; }
   .tier-head {
     font-family: "Courier Prime", monospace; font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em;
     text-transform: uppercase; color: var(--ink-dim); margin-bottom: 4px;
   }
-  .mini-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .mini-table { width: 100%; border-collapse: collapse; font-size: 11.5px; table-layout: fixed; }
   .mini-table th {
     font-family: "Courier Prime", monospace; font-size: 9px; font-weight: 700; letter-spacing: 0.05em;
     text-transform: uppercase; color: var(--ink-dim); text-align: left; padding: 3px 5px;
     border-bottom: 1px solid var(--border); white-space: nowrap;
   }
-  .mini-table th.num, .mini-table td.num { text-align: right; }
+  .mini-table th.num, .mini-table td.num { text-align: right; width: 52px; }
   .mini-table td {
     padding: 4px 5px; border-bottom: 1px solid var(--border); white-space: nowrap;
     font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-variant-numeric: tabular-nums;
   }
+  .mini-table td:first-child { white-space: normal; }
   .mini-table td.name { font-family: Georgia, serif; font-weight: 600; overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
   .mini-table tbody tr { cursor: pointer; }
   .mini-table tbody tr:hover td { color: var(--accent); }
@@ -383,7 +397,7 @@
     padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px;
   }
   .preview-row:last-child { border-bottom: none; }
-  .preview-row-name { color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .preview-row-name { color: var(--ink); font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .preview-row-tag { color: var(--ink-dim); font-size: 10.5px; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; }
   .preview-row-val {
     font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-weight: 700; font-size: 12px;
@@ -906,7 +920,6 @@
           <tr>
             <th class="num" data-sort="rank">#</th>
             <th data-sort="name">Player</th>
-            <th data-sort="position">Pos</th>
             <th class="num" data-sort="score">Score</th>
             <th class="num" data-sort="percentile">Percentile</th>
             <th>Grade</th>
@@ -947,6 +960,11 @@
   function teamLogoImg(abbr, sizePx) {
     const logo = teamLogoByAbbr[abbr];
     return logo ? `<img class="team-logo" src="${logo}" alt="" width="${sizePx}" height="${sizePx}" />` : '';
+  }
+  // Standard player identity cell (name + regression tag, then team logo +
+  // team abbreviation + position pill) used consistently across every table.
+  function playerNameCellHtml(p) {
+    return `<div class="name-cell"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span></span></div>`;
   }
   const marketCount = allPlayers.filter(p => !p.isPreArb).length;
   const preArbCount = allPlayers.filter(p => p.isPreArb).length;
@@ -1578,7 +1596,7 @@
       const half = (records, label) => {
         const rows = records.length
           ? records.map(p => `<button class="carousel-row" data-pidx="${pushHomeRow(p)}">
-              <span class="carousel-row-name">${p.name} <span class="carousel-row-tag">${p.team} · ${p.position}</span></span>
+              <span class="carousel-row-name">${p.name} <span class="carousel-row-tag">${teamLogoImg(p.team, 13)}${p.team} · ${p.position}</span></span>
               <span class="carousel-row-val ${p.score >= 0 ? 'good' : 'bad'}" data-count="${p.score}" data-count-fmt="signed">${fmtSigned(p.score)}</span>
             </button>`).join('')
           : `<div class="empty">No qualifying players in the ${leagueUpper}.</div>`;
@@ -1674,7 +1692,7 @@
       const delta = dPct != null ? (dPct >= 0 ? '+' : '') + dPct.toFixed(1) + '%' : '';
       const over = sig.gap > 0;
       return `<button class="pick-row" data-pidx="${pushHomeRow(p)}">
-        <span class="preview-row-name">${p.name} <span class="preview-row-tag">${p.team} · ${p.position}</span></span>
+        <span class="preview-row-name">${p.name} <span class="preview-row-tag">${teamLogoImg(p.team, 13)}${p.team} · ${p.position}</span></span>
         <span class="preview-row-val ${over ? 'good' : 'bad'}">${delta} <span class="regression-tag ${over ? 'good' : 'bad'}">${over ? '▲' : '▼'}</span></span>
       </button>`;
     };
@@ -1720,7 +1738,7 @@
         const kbb = kMinusBbPct(p);
         const surCls = p.paySurplus != null ? (p.paySurplus >= 0 ? ' good' : ' bad') : '';
         return `<tr data-pidx="${pushHomeRow(p)}">
-          <td class="name">${p.name}</td>
+              <td>${playerNameCellHtml(p)}</td>
           <td class="num">${p.stats.era != null ? p.stats.era.toFixed(2) : '—'}</td>
           <td class="num">${kbb != null ? kbb.toFixed(1) + '%' : '—'}</td>
           <td class="num">${warVal(p)}</td>
@@ -1766,14 +1784,14 @@
         ? `<table class="mini-table rotation-players">
             <thead><tr><th>Player</th><th class="num">Score</th></tr></thead>
             <tbody>${t.sps.map(p => `<tr data-pidx="${pushHomeRow(p)}">
-              <td class="name">${p.name}</td>
+          <td>${playerNameCellHtml(p)}</td>
               <td class="num ${p.score >= 0 ? 'good' : 'bad'}">${fmtSigned(p.score)}</td>
             </tr>`).join('')}</tbody>
           </table>`
         : '';
       return `
       <div class="pick-row rotation-team-row" data-team-toggle="${t.abbr}">
-        <span class="preview-row-name">${expanded ? '▾' : '▸'} ${t.name} <span class="preview-row-tag">${t.abbr} · avg FIP ${t.avgFip != null ? t.avgFip.toFixed(2) : '—'} · ${Math.round(t.totalIp)} IP · ${fmtMoney(t.payroll)} payroll</span></span>
+        <span class="preview-row-name">${expanded ? '▾' : '▸'} ${teamLogoImg(t.abbr, 15)}${t.name} <span class="preview-row-tag">${t.abbr} · avg FIP ${t.avgFip != null ? t.avgFip.toFixed(2) : '—'} · ${Math.round(t.totalIp)} IP · ${fmtMoney(t.payroll)} payroll</span></span>
         <span class="preview-row-val ${t.avgScore >= 0 ? 'good' : 'bad'}">${fmtSigned(t.avgScore)}</span>
       </div>
       ${playersHtml}`;
@@ -1882,7 +1900,7 @@
       const keyStat = p.projectedFutureYears[String(firstYear.season)][p.isBatter ? 'xwoba' : 'xera'];
       const keyType = p.isBatter ? 'avg3' : 'rate2';
       return `<tr class="row-toggle" data-pidx="${pushHomeRow(p)}">
-        <td><div class="name-cell"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td>${playerNameCellHtml(p)}</td>
         <td class="num">${fmtMoney(lock.avgPay)}</td>
         <td class="num">${fmtStatValue(keyType, keyStat)}</td>
         <td class="num">${fmtMoney(lock.avgValue)}</td>
@@ -1946,7 +1964,7 @@
     const maxAbs = 100;
     document.getElementById('player-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
       <tr class="row-toggle" data-idx="${i}">
-        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td><span class="chevron">▸</span>${playerNameCellHtml(p)}</td>
         <td class="num" data-count="${p.salary}" data-count-fmt="money">${fmtMoney(p.salary)}</td>
         <td class="num" data-count="${p.compPct}" data-count-fmt="pct1">${p.compPct.toFixed(1)}</td>
         <td class="num" data-count="${p.salPct}" data-count-fmt="pct1">${p.salPct.toFixed(1)}</td>
@@ -2008,7 +2026,7 @@
     const maxSurplus = Math.max(...allSurplus, 1);
     document.getElementById('rookie-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
       <tr class="row-toggle" data-idx="${i}">
-        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td><span class="chevron">▸</span>${playerNameCellHtml(p)}</td>
         <td class="num" data-count="${p.salary}" data-count-fmt="money">${fmtMoney(p.salary)}</td>
         <td class="num" data-count="${p.compPct}" data-count-fmt="pct1">${p.compPct.toFixed(1)}</td>
         <td class="num" data-count="${p.projectedSalary}" data-count-fmt="money">${fmtMoney(p.projectedSalary)}</td>
@@ -2103,7 +2121,7 @@
       allPendingFA ? 'Projected Free Agent Value' : 'Projected 2027';
     document.getElementById('arb-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
       <tr class="row-toggle" data-idx="${i}">
-        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td><span class="chevron">▸</span>${playerNameCellHtml(p)}</td>
         <td>${arbYearShortLabel(p)}${p.arbTabPendingFA ? ' <span class="pos-pill" title="Reaches free agency next season">FA</span>' : ''}</td>
         <td class="num" data-count="${p.aav}" data-count-fmt="money">${fmtMoney(p.aav)}</td>
         <td class="num" data-count="${p.arbTabProjectedValue ?? ''}" data-count-fmt="money">${p.arbTabProjectedValue != null ? fmtMoney(p.arbTabProjectedValue) : '—'}</td>
@@ -2171,7 +2189,7 @@
       const ip = p.stats.ip, fip = p.stats.fip, xera = p.stats.xera, stuff = p.stats.stuff_plus;
       const kbb = kMinusBbPct(p);
       return `<tr class="row-toggle" data-idx="${i}">
-        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td><span class="chevron">▸</span>${playerNameCellHtml(p)}</td>
         <td class="num"${ip != null ? ` data-count="${ip}" data-count-fmt="dec1"` : ''}>${ip != null ? ip.toFixed(1) : '—'}</td>
         <td class="num"${fip != null ? ` data-count="${fip}" data-count-fmt="dec2"` : ''}>${fip != null ? fip.toFixed(2) : '—'}</td>
         <td class="num"${xera != null ? ` data-count="${xera}" data-count-fmt="dec2"` : ''}>${xera != null ? xera.toFixed(2) : '—'}</td>
@@ -2229,7 +2247,7 @@
       const ip = p.stats.ip, era = p.stats.era, war = p.stats.war;
       const kbb = kMinusBbPct(p);
       return `<tr class="row-toggle" data-idx="${i}">
-        <td><span class="chevron">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${p.team} · <span class="pos-pill">${p.position}</span></span></div></td>
+        <td><span class="chevron">▸</span>${playerNameCellHtml(p)}</td>
         <td class="num"${ip != null ? ` data-count="${ip}" data-count-fmt="dec1"` : ''}>${ip != null ? ip.toFixed(1) : '—'}</td>
         <td class="num"${era != null ? ` data-count="${era}" data-count-fmt="dec2"` : ''}>${era != null ? era.toFixed(2) : '—'}</td>
         <td class="num"${kbb != null ? ` data-count="${kbb}" data-count-fmt="pct1s"` : ''}>${kbb != null ? kbb.toFixed(1) + '%' : '—'}</td>
@@ -3410,14 +3428,13 @@
       const row = `
       <tr class="row-toggle" data-idx="${i}">
         <td class="num">${i + 1}</td>
-        <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${p.name}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team}</span></div></td>
-        <td><span class="pos-pill">${p.position}</span></td>
+        <td><span class="chevron${open ? ' open' : ''}">▸</span>${playerNameCellHtml(p)}</td>
         <td class="num ${p.score >= 0 ? 'good' : 'bad'}" data-count="${p.score}" data-count-fmt="signed">${fmtSigned(p.score)}</td>
         <td class="num" data-count="${p.compPct}" data-count-fmt="pct1">${p.compPct.toFixed(1)}</td>
         <td>${p.grade}</td>
       </tr>`;
       return row + (open ? customDetailRow(p, open && key !== pendingCustomOpen && key !== pendingCustomClose) : '');
-    }).join('') : `<tr><td colspan="6"><div class="empty">No players at this position.</div></td></tr>`;
+    }).join('') : `<tr><td colspan="5"><div class="empty">No players at this position.</div></td></tr>`;
     customRowsCurrent = rows;
   }
   let customRowsCurrent = [];
