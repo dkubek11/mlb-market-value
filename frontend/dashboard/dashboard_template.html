@@ -383,7 +383,7 @@
   .explore-card .empty { padding: 10px 0 14px; font-size: 12.5px; text-align: left; }
 
   .locks-card { padding: 16px 18px; margin-bottom: 32px; }
-  .locks-card .table-scroll { margin-top: 8px; }
+  .locks-card .table-scroll, .explore-card .table-scroll { margin-top: 8px; }
   .preview-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px 8px; }
   .preview-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
   .preview-head h3 { font-size: 13px; font-weight: 800; margin: 0; }
@@ -1798,7 +1798,7 @@
     };
     const bestRows = best.length ? best.map(row).join('') : '<div class="empty">No rotations with 2+ qualifying SP in this build.</div>';
     const worstRows = worst.length ? worst.map(row).join('') : '<div class="empty">No rotations with 2+ qualifying SP in this build.</div>';
-    document.getElementById('explore-rotations').innerHTML = `
+    document.getElementById('locks-card').innerHTML = `
       <div class="preview-head">
         <h3>Best / Worst Rotations <span class="preview-sub">per-team SP aggregates — avg value score</span></h3>
       </div>
@@ -1907,7 +1907,7 @@
         <td class="num ${lock.totalSurplus >= 0 ? 'good' : 'bad'}" data-count="${lock.totalSurplus}" data-count-fmt="signedM">${fmtSigned(lock.totalSurplus / 1e6)}M</td>
       </tr>`;
     }).join('') : '<tr><td colspan="5"><div class="empty">No players with 3 full guaranteed contract years remaining (2027-2029) in this build.</div></td></tr>';
-    document.getElementById('locks-card').innerHTML = `
+    document.getElementById('explore-rotations').innerHTML = `
       <div class="preview-head">
         <h3>Long-Term Contract Value Locks <span class="preview-sub">real 3-year projections (2027-2029) vs. real guaranteed pay — contract years only, no arbitration</span></h3>
       </div>
