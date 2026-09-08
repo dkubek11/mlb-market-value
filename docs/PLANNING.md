@@ -13,14 +13,14 @@ A Python data pipeline ( [`backend/`](backend/) ) and a self-contained HTML dash
 **Data flow (current):**
 
 ```
-Season ingest ──▶ compute_value ──▶ build_dashboard ──▶ splice_dashboard
-(2-step pipleine)                  (compute percentiles)  (query DB → JSON)    (embed data → HTML)
+Season ingest ──▶ compute_value ──▶ FastAPI live render (GET /)
+(stats & salaries)  (compute percentiles)  (inlines snapshot & fonts into dashboard_template.html)
 ```
 
-1. [`run_ingest.py`](backend/app/pipeline/run_ingest.py) orchestrates pulls from MLB Stats API, Statcast, FanGraphs (batting/pitching/salary), and fielding sources. Upserts into Postgres. Historical seasons (2015-2025) have stats and fielding only — salary scraping is skipped (`--skip-salary`) because RosterResource only exposes current rosters.
+1. [`run_ingest.py`](backend/app/pipeline/run_ingest.py) orchestrates pulls from MLB Stats API, Statcast, FanGraphs (batting/pitching/salary), and fielding sources. Upserts into Postgres/SQLite. Historical seasons (2015-2025) have stats and fielding only — salary scraping is skipped (`--skip-salary`) because RosterResource only exposes current rosters.
 2. [`run_compute_value.py`](backend/app/pipeline/run_compute_value.py) computes within-position z-scores, composite percentiles, salary percentiles, value scores, and pre-arb market salary projections. Writes [`player_value`](backend/app/models.py:171) and [`team_payroll_summary`](backend/app/models.py:189) tables.
-3. [`build_dashboard.py`](frontend/dashboard/build_dashboard.py) queries the live DB fresh each run, computes Marcel and comp projections inline, and writes `dashboard_data.json`.
-4. [`splice_dashboard.py`](frontend/dashboard/splice_dashboard.py) base64-encodes the JSON + fonts into a single `dashboard_final.html` file.
+3. [`build_dashboard.py`](frontend/dashboard/build_dashboard.py) provides `build_dashboard_data(season)` to build the full data snapshot from the database and live scrapes.
+4. [`main.py`](backend/app/main.py) serves `GET /` live, inlining the snapshot and base64 fonts into `dashboard_template.html` on request (cached for 30 minutes, or refreshed immediately with `?refresh=1`). REST endpoints like `/api/dashboard` expose the payload directly.
 
 ### Key Design Notes
 
@@ -35,6 +35,8 @@ Season ingest ──▶ compute_value ──▶ build_dashboard ──▶ splice
 ## Regression Analysis Engine
 
 > **Goal**: Build a retrospective accuracy measurement system that validates and iteratively tunes the projection models using 10 years of historical data.
+>
+> **Status: Implemented!** Historical backtesting is implemented in [`backend/scripts/backtest_projections.py`](../backend/scripts/backtest_projections.py). It evaluates Marcel + comp projections for seasons 2018–2025 against actual outcomes and naive baselines.
 
 ### Motivation
 
@@ -212,33 +214,17 @@ A catch-all section for changes large and small. Add items freely as they come u
 
 ### Two-Way Player Handling
 
-Shohei Ohtani-type players get both a batter row and a pitcher row in `player_seasons` (separated by `player_type`), but the dashboard has no combined view. A two-way player's value is split across two rows, and neither the diamond view nor the player detail modal shows a unified picture.
-
-**Possible approaches:**
-- Detect two-way players (same `player_id` with both `BATTER` and `PITCHER` in a season) and merge in a dashboard overlay.
-- Add a `is_two_way` flag to `player_seasons` — but that duplicates information already in the data.
-- Create a composite `value_score` that blends both roles using playing-time proportion.
+> **Status: Database & Payroll Deduplication Implemented.** The schema supports two-way players via composite primary keys `(player_id, season, player_type)` in `player_seasons` and `player_value`. In `compute_value.py`, team payroll queries collapse two-way players before joining to prevent double-counting team payroll. In the dashboard UI, rows are keyed by `id:position` to allow independent evaluation. A unified single-modal composite view remains a future enhancement.
 
 ### Expand FastAPI Server to Serve Dashboard Data
 
-The current [`main.py`](backend/app/main.py) has only 3 endpoints: `/health`, `/players/value`, `/players/projected`, `/teams/payroll`. The dashboard is still built via `build_dashboard.py` → `splice_dashboard.py`, which re-queries the DB and embeds everything into a static file.
+> **Status: Completed!** FastAPI now directly serves the live rendered HTML dashboard at `GET /` and the structured payload at `GET /api/dashboard`.
 
-**Why expand the API:**
-- Eliminate the 2-step build process for real-time data.
-- Allow the dashboard to refresh player lists with a page reload instead of a full rebuild.
-- Enable filtering and sorting server-side instead of baking a static JSON dump.
-
-**Tradeoff:** The dashboard is currently a fully offline, self-contained HTML file that can be opened from disk or emailed. Adding API dependencies means it needs a running server.
+The [`main.py`](backend/app/main.py) service renders `frontend/dashboard/dashboard_template.html` with data from `build_dashboard_data(season)` inlined at request time, caching pages for 30 minutes (bypassable with `?refresh=1`). Offline HTML splicing has been removed.
 
 ### Refactor `build_dashboard.py` sys.path Hack
 
-[`build_dashboard.py`](frontend/dashboard/build_dashboard.py:14) uses:
-
-```python
-sys.path.insert(0, r"C:\Users\dylan\Desktop\mlb-market-value\backend")
-```
-
-This is machine-specific and fragile. The backend should be a proper pip-installable package (a `pyproject.toml` with a `[project.scripts]` entry point) so the dashboard builder can just `pip install -e ../backend` and import cleanly.
+> **Status: Completed!** Resolved using relative path resolution with Python's standard `pathlib.Path(__file__).resolve()`.
 
 ### Pitch-by-Pitch Extension Pull Performance
 
@@ -270,10 +256,11 @@ The dashboard shows a single season's snapshot. Adding a trend view — a line c
 
 ### Dashboard: Save / Reset Stat Weights
 
-The dashboard's "Weights" tab allows live adjustment of every stat's weight in the composite score, but there's no "reset to defaults" button or "save preset" feature. Users who tweak weights can't easily return to the calibrated starting point, and there's no way to share a weight configuration.
+> **Status: Completed!** Reset buttons have been implemented in `dashboard_template.html` for pay weights, batting weights, and pitching weights (`#reset-pay-weight`, `#reset-bat-weights`, `#reset-pit-weights`).
 
-**Goals:**
-- A "Reset to Default" button that reverts all weights to hardcoded initial values.
+The dashboard's "Weights" tab allows live adjustment of every stat's weight in the composite score, and includes "Reset to default weight(s)" buttons to restore initial calibrated weights at any time.
+
+**Future enhancements:**
 - A "Save Preset" / "Load Preset" feature using localStorage (or URL hash parameters for sharing).
 - Optional: A "compare two weight sets" mode to see how rankings shift.
 
@@ -292,17 +279,16 @@ flowchart LR
     F[FanGraphs Salary / RR] --> B
     G[Fielding Sources] --> B
 
-    B --> H[(Postgres DB)]
+    B --> H[(Database: Postgres / SQLite)]
     H --> I[compute_value.py]
 
     I --> H
     H --> J[build_dashboard.py]
-    J --> K[dashboard_data.json]
-    K --> L[splice_dashboard.py]
-    L --> M[dashboard_final.html]
 
-    J --> N[projections.py \n(Marcel regression)]
-    J --> O[comp_projections.py \n(nearest-neighbor)]
+    J --> N["projections.py (Marcel regression)"]
+    J --> O["comp_projections.py (nearest-neighbor)"]
+    J --> P["FastAPI main.py (GET / & /api/dashboard)"]
+    P --> Q["Live Browser Dashboard"]
 ```
 
 ### Proposed Regression Analysis Data Flow
