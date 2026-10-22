@@ -873,7 +873,10 @@
             <th data-sort="name">Team</th>
             <th data-sort="division">Division</th>
             <th class="num" data-sort="payroll">Payroll</th>
-            <th class="num" data-sort="avgScore">Avg Score</th>
+            <th class="num" data-sort="avgScore">Team Score</th>
+            <th class="num" data-sort="lineupScore">Lineup</th>
+            <th class="num" data-sort="rotationScore">Rotation</th>
+            <th class="num" data-sort="bullpenScore">Bullpen</th>
           </tr>
         </thead>
         <tbody id="team-rows"></tbody>
@@ -1771,13 +1774,13 @@
 
   function renderRotations() {
     const aggs = teams.map(t => {
-      const sps = marketPlayers.filter(p => p.team === t.abbr && p.position === 'SP');
+      const sps = t.rotation;
       if (sps.length < 2) return null;
       const fips = sps.map(p => p.stats.fip).filter(v => v != null);
       return {
         name: t.name, abbr: t.abbr,
-        sps: [...sps].sort((a, b) => b.score - a.score),
-        avgScore: sps.reduce((a, p) => a + p.score, 0) / sps.length,
+        sps,
+        avgScore: t.rotationScore,
         avgFip: fips.length ? fips.reduce((a, v) => a + v, 0) / fips.length : null,
         totalIp: sps.reduce((a, p) => a + (p.stats.ip || 0), 0),
         payroll: sps.reduce((a, p) => a + (p.aav || 0), 0),
@@ -1789,10 +1792,11 @@
       const expanded = expandedRotationTeams.has(t.abbr);
       const playersHtml = expanded
         ? `<table class="mini-table rotation-players">
-            <thead><tr><th>Player</th><th class="num">Score</th></tr></thead>
+            <thead><tr><th>Player</th><th class="num">IP</th><th class="num">Score</th></tr></thead>
             <tbody>${t.sps.map(p => `<tr data-pidx="${pushHomeRow(p)}">
           <td>${playerNameCellHtml(p)}</td>
-              <td class="num ${p.score >= 0 ? 'good' : 'bad'}">${fmtSigned(p.score)}</td>
+              <td class="num">${Math.round(p.stats.ip || 0)}</td>
+              <td class="num ${p.teamScore >= 0 ? 'good' : 'bad'}">${fmtSigned(p.teamScore)}</td>
             </tr>`).join('')}</tbody>
           </table>`
         : '';
@@ -1803,11 +1807,11 @@
       </div>
       ${playersHtml}`;
     };
-    const bestRows = best.length ? best.map(row).join('') : '<div class="empty">No rotations with 2+ qualifying SP in this build.</div>';
-    const worstRows = worst.length ? worst.map(row).join('') : '<div class="empty">No rotations with 2+ qualifying SP in this build.</div>';
+    const bestRows = best.length ? best.map(row).join('') : '<div class="empty">No rotations with 2+ starters in this build.</div>';
+    const worstRows = worst.length ? worst.map(row).join('') : '<div class="empty">No rotations with 2+ starters in this build.</div>';
     document.getElementById('locks-card').innerHTML = `
       <div class="preview-head">
-        <h3>Best / Worst Rotations <span class="preview-sub">per-team SP aggregates — avg value score</span></h3>
+        <h3>Best / Worst Rotations <span class="preview-sub">each team's top 5 SP by IP — avg value score</span></h3>
       </div>
       <div class="explore-subhead good">Best — highest avg score</div>
       ${bestRows}
@@ -2391,7 +2395,7 @@
   let pendingTeamClose = false;
 
   function renderDiamondPanel(team, expanded) {
-    return `<tr class="diamond-row" data-abbr="${team.abbr}"><td colspan="4"><div class="diamond-accordion${expanded ? ' expanded' : ''}"><div class="diamond-accordion-inner">
+    return `<tr class="diamond-row" data-abbr="${team.abbr}"><td colspan="7"><div class="diamond-accordion${expanded ? ' expanded' : ''}"><div class="diamond-accordion-inner">
       <div class="diamond-panel">
         <div class="diamond-head">
           <h3>${teamLogoImg(team.abbr, 24)}${team.name} — 2026 roster by position</h3>
@@ -2430,6 +2434,9 @@
         <td>${t.division}</td>
         <td class="num" data-count="${t.payroll}" data-count-fmt="money">${fmtMoney(t.payroll)}</td>
         <td class="num">${valueBar(t.avgScore, maxAbs)}</td>
+        <td class="num ${t.lineupScore >= 0 ? 'good' : 'bad'}">${fmtSigned(t.lineupScore)}</td>
+        <td class="num ${t.rotationScore >= 0 ? 'good' : 'bad'}">${fmtSigned(t.rotationScore)}</td>
+        <td class="num ${t.bullpenScore >= 0 ? 'good' : 'bad'}">${fmtSigned(t.bullpenScore)}</td>
       </tr>`;
       return row + (open ? renderDiamondPanel(t, open && !pendingTeamOpen) : '');
     }).join('');
@@ -3158,6 +3165,7 @@
         p.salPct = bySalary.length > 1 ? (i / (bySalary.length - 1)) * 100 : 100;
         p.score = p.compPct - payWeight * p.salPct;
         p.predictedScore = p.expectedPct - payWeight * p.salPct;
+        p.teamScore = p.score;
       });
 
       // Rank players by their blended (Marcel + comparable-player) projected
@@ -3183,6 +3191,15 @@
         p.salPct = null;
         p.score = p.compPct;
         p.predictedScore = p.expectedPct;
+        // Team/rotation/bullpen scores include pre-arb players too (they pitch
+        // and hit), but their displayed Score skips the pay adjustment and would
+        // sit on a different scale than everyone else's. teamScore applies the
+        // SAME formula to them: where their (near-minimum) salary would slot among
+        // market salaries at the position. For market players teamScore === score.
+        const cheaper = bySalary.filter(m => m.aav < p.aav).length;
+        const same = bySalary.filter(m => m.aav === p.aav).length;
+        const impliedSalPct = bySalary.length ? ((cheaper + same / 2) / bySalary.length) * 100 : 0;
+        p.teamScore = p.compPct - payWeight * impliedSalPct;
       });
 
       // Recommended pay: what a player's performance level says they're
@@ -3318,9 +3335,22 @@
       });
     });
 
+    // Team scores use the people who actually played, not just market-priced
+    // regulars: every hitter in the scoring pool (more than 30 games), the 5 SP
+    // with the most IP, and the 13 RP with the most IP -- an 18-arm staff.
+    // Pre-arb players count (see teamScore above). Plain averages of teamScore.
+    const TEAM_SP_SLOTS = 5, TEAM_RP_SLOTS = 13;
+    const meanTeamScore = arr => arr.length ? arr.reduce((a, p) => a + p.teamScore, 0) / arr.length : 0;
     teams.forEach(t => {
-      const roster = allPlayers.filter(p => p.team === t.abbr && !p.isPreArb && p.score != null);
-      t.avgScore = roster.length ? roster.reduce((a, p) => a + p.score, 0) / roster.length : 0;
+      const onTeam = allPlayers.filter(p => p.team === t.abbr);
+      const byIp = pos => onTeam.filter(p => p.position === pos).sort((a, b) => (b.stats.ip || 0) - (a.stats.ip || 0));
+      t.lineup = onTeam.filter(p => p.isBatter);
+      t.rotation = byIp('SP').slice(0, TEAM_SP_SLOTS);
+      t.bullpen = byIp('RP').slice(0, TEAM_RP_SLOTS);
+      t.lineupScore = meanTeamScore(t.lineup);
+      t.rotationScore = meanTeamScore(t.rotation);
+      t.bullpenScore = meanTeamScore(t.bullpen);
+      t.avgScore = meanTeamScore([...t.lineup, ...t.rotation, ...t.bullpen]);
     });
   }
 
