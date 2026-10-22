@@ -1,4 +1,7 @@
-# React Frontend Migration — Complete ✅
+# React Frontend Migration — Complete ✅ (Historical Branch Artifact)
+
+> [!NOTE]
+> **Historical Branch Result**: This document records the completion of a React frontend migration tested on a feature branch. The `master` branch retains the Python/FastAPI live-rendered template (`frontend/dashboard/dashboard_template.html`).
 
 All 17 steps of [`plans/react-frontend-migration.md`](plans/react-frontend-migration.md:239) are done, with steps 12–17 finished in this session.
 

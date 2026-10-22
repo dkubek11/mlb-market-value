@@ -44,11 +44,11 @@ _fonts_cache: dict[str, str] | None = None
 _template_cache: str | None = None
 
 
-def _render_dashboard(season: int) -> str:
+def _render_dashboard(season: int, refresh: bool = False) -> str:
     global _fonts_cache, _template_cache
-    if _template_cache is None:
+    if _template_cache is None or refresh:
         _template_cache = _DASHBOARD_TEMPLATE.read_text(encoding="utf-8")
-    if _fonts_cache is None:
+    if _fonts_cache is None or refresh:
         _fonts_cache = {
             ph: (_DASHBOARD_DIR / fn).read_text(encoding="utf-8").strip()
             for ph, fn in _FONT_PLACEHOLDERS.items()
@@ -96,7 +96,7 @@ def dashboard(
     cached = _dashboard_cache.get(season)
     if cached and not refresh and (time.time() - cached[0]) < _DASHBOARD_CACHE_TTL_SECONDS:
         return HTMLResponse(cached[1])
-    html = _render_dashboard(season)
+    html = _render_dashboard(season, refresh=refresh)
     _dashboard_cache[season] = (time.time(), html)
     return HTMLResponse(html)
 
