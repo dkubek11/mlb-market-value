@@ -27,6 +27,7 @@ from app.pipeline.projections import (
     compute_batter_projections_future_years, compute_pitcher_projections_future_years,
     BATTER_PROJECTION_STATS, PITCHER_PROJECTION_STATS, blend_projections,
 )
+from app.pipeline import expected_war
 from app.pipeline.comp_projections import compute_batter_comp_projections, compute_pitcher_comp_projections
 from app.pipeline.fangraphs_salary import TEAM_SLUG_TO_ABBREVIATION, fetch_team_contracts
 from app.pipeline import mlbtr_arbitration
@@ -75,7 +76,7 @@ def build_dashboard_data(season: int) -> dict:
     BATTER_STATS = ["ba", "obp", "slg", "xwoba", "xba", "xslg", "hr", "rbi", "sb",
                      "barrel_rate", "hard_hit_rate", "sprint_speed",
                      "chase_rate", "whiff_rate", "k_rate", "bb_rate", "k_minus_bb", "oaa", "frv", "drs",
-                     "hits", "games", "war", "wrc_plus"]
+                     "hits", "games", "bwar", "wrc_plus"]
 
 
     def _add_k_minus_bb(df: pd.DataFrame) -> pd.DataFrame:
@@ -88,7 +89,7 @@ def build_dashboard_data(season: int) -> dict:
                       "hard_hit_rate_against", "barrel_rate_against", "xba_against",
                       "avg_exit_velo_against", "chase_rate", "whiff_rate", "k_rate", "bb_rate",
                       "z_swing_rate", "extension", "stuff_plus", "location_plus",
-                      "wins", "saves", "games_started", "ip", "war"]
+                      "wins", "saves", "games_started", "ip", "bwar"]
 
     BATTER_Q = text("""
         SELECT bs.player_id, p.full_name, t.abbreviation AS team, ps.position AS position,
@@ -97,7 +98,7 @@ def build_dashboard_data(season: int) -> dict:
                bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
                bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
                fs.oaa, fs.frv, fs.drs,
-               bs.hits, bs.games, bs.war, bs.wrc_plus
+               bs.hits, bs.games, bs.bwar, bs.wrc_plus
         FROM batter_stats bs
         JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
         JOIN players p ON p.player_id = bs.player_id
@@ -114,7 +115,7 @@ def build_dashboard_data(season: int) -> dict:
                ps_s.hard_hit_rate_against, ps_s.barrel_rate_against, ps_s.xba_against,
                ps_s.avg_exit_velo_against, ps_s.chase_rate, ps_s.whiff_rate, ps_s.k_rate, ps_s.bb_rate,
                ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus,
-               ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.war
+               ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.bwar
         FROM pitcher_stats ps_s
         JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
         JOIN players p ON p.player_id = ps_s.player_id
@@ -140,7 +141,7 @@ def build_dashboard_data(season: int) -> dict:
                bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
                bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
                fs.oaa, fs.frv, fs.drs,
-               bs.hits, bs.games, bs.war, bs.wrc_plus
+               bs.hits, bs.games, bs.bwar, bs.wrc_plus
         FROM batter_stats bs
         JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
         JOIN teams t ON t.team_id = ps.team_id
@@ -154,7 +155,7 @@ def build_dashboard_data(season: int) -> dict:
                ps_s.hard_hit_rate_against, ps_s.barrel_rate_against, ps_s.xba_against,
                ps_s.avg_exit_velo_against, ps_s.chase_rate, ps_s.whiff_rate, ps_s.k_rate, ps_s.bb_rate,
                ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus,
-               ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.war
+               ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.bwar
         FROM pitcher_stats ps_s
         JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
         JOIN teams t ON t.team_id = ps.team_id
@@ -281,6 +282,14 @@ def build_dashboard_data(season: int) -> dict:
     batters["position"] = batters["position"].map(lambda p: POS_MAP.get(p, p))
     batters["is_pre_arb"] = batters["contract_type"].apply(_is_pre_arb)
     pitchers["is_pre_arb"] = pitchers["contract_type"].apply(_is_pre_arb)
+
+    # Expected bWAR: fits the non-negative process-stat -> bWAR model on every
+    # completed season before this one and standardizes each current player
+    # against this season's qualifying population (see expected_war.py).
+    print(f"[{season}] fitting expected-bWAR model...")
+    expected_war_model, expected_war_z = expected_war.build(season)
+    for _g in ("batter", "pitcher"):
+        print(f"  {_g}: out-of-sample R^2 {expected_war_model[_g]['cvR2']} on {expected_war_model[_g]['nTrain']} player-seasons")
 
     print(f"[{season}] computing Marcel-style projections...")
     batter_marcel = compute_batter_projections(season)
@@ -503,6 +512,7 @@ def build_dashboard_data(season: int) -> dict:
 
     def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map, future_map, last30_map):
         proj = proj_map.get(int(r.player_id), {})
+        pred_inputs = expected_war.player_inputs(r, is_batter, expected_war_z)
         future = future_map.get(int(r.player_id), {})
         debut_date = getattr(r, "debut_date", None)
         # Real accrued MLB service time (years.days) -- the actual figure the
@@ -535,6 +545,12 @@ def build_dashboard_data(season: int) -> dict:
             "aav": round(float(r.aav)),
             "contractType": r.contract_type,
             "stats": {s: clean(getattr(r, s)) for s in stat_keys},
+            # Inputs for the expected-bWAR (Predicted Score) model: playing-time
+            # volume (PA/600 or IP/100) and each model stat standardized and
+            # oriented so higher = better. The frontend applies the model
+            # weights (live-adjustable sliders) to these.
+            "volume": pred_inputs["volume"],
+            "predZ": pred_inputs["predZ"],
             "age": clean(proj.get("age")),
             # Projected true-talent values, keyed the same as "stats" so any stat
             # can be compared 1:1 against its own projection (blend of Marcel
@@ -688,6 +704,7 @@ def build_dashboard_data(season: int) -> dict:
 
     out = {
         "allPlayers": all_players,
+        "expectedWarModel": expected_war_model,
         "positionStats": positionStats,
         "positionStatsHistory": positionStatsHistory,
         "historicalArbOutcomes": historical_arb_outcomes,

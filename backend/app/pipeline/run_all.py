@@ -109,6 +109,11 @@ def main() -> None:
         print(f"[{season}] ingesting (salary={include_salary})...")
         run_pipeline_step("run_ingest", "--season", str(season), *(["--skip-salary"] if not include_salary else []))
 
+    # bWAR is also written during ingest, but pre-existing seasons ingested
+    # before the column existed (or a fetch that failed at the time) get filled
+    # here. Cheap and idempotent.
+    run_pipeline_step("run_bwar", "--first-season", str(args.season - args.history_seasons), "--last-season", str(args.season))
+
     # Compute player values + payroll for every season that has data (not just
     # newly-ingested ones), so the dashboard/API are fully populated even if a
     # previous run left compute half-done.
