@@ -1792,10 +1792,11 @@
       const expanded = expandedRotationTeams.has(t.abbr);
       const playersHtml = expanded
         ? `<table class="mini-table rotation-players">
-            <thead><tr><th>Player</th><th class="num">IP</th><th class="num">Score</th></tr></thead>
+            <thead><tr><th>Player</th><th class="num">IP</th><th class="num" title="Share of a full 180-IP starter workload; scales this pitcher's pull on the rotation score">Weight</th><th class="num">Score</th></tr></thead>
             <tbody>${t.sps.map(p => `<tr data-pidx="${pushHomeRow(p)}">
           <td>${playerNameCellHtml(p)}</td>
               <td class="num">${Math.round(p.stats.ip || 0)}</td>
+              <td class="num">${p.teamWeight.toFixed(2)}</td>
               <td class="num ${p.teamScore >= 0 ? 'good' : 'bad'}">${fmtSigned(p.teamScore)}</td>
             </tr>`).join('')}</tbody>
           </table>`
@@ -1811,7 +1812,7 @@
     const worstRows = worst.length ? worst.map(row).join('') : '<div class="empty">No rotations with 2+ starters in this build.</div>';
     document.getElementById('locks-card').innerHTML = `
       <div class="preview-head">
-        <h3>Best / Worst Rotations <span class="preview-sub">each team's top 5 SP by IP — avg value score</span></h3>
+        <h3>Best / Worst Rotations <span class="preview-sub">each team's top 5 SP by IP — innings-weighted avg value score</span></h3>
       </div>
       <div class="explore-subhead good">Best — highest avg score</div>
       ${bestRows}
@@ -2424,7 +2425,7 @@
       const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
       return teamSort.dir === 'asc' ? cmp : -cmp;
     });
-    document.getElementById('team-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a team to see the roster' : '');
+    document.getElementById('team-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a team to see the roster · Team Score = 55% lineup, 28% rotation, 17% bullpen, each weighted by playing time' : '');
     const maxAbs = Math.max(...teams.map(t => Math.abs(t.avgScore)), 1);
     document.getElementById('team-rows').innerHTML = rows.map(t => {
       const open = expandedTeam === t.abbr;
@@ -3338,19 +3339,46 @@
     // Team scores use the people who actually played, not just market-priced
     // regulars: every hitter in the scoring pool (more than 30 games), the 5 SP
     // with the most IP, and the 13 RP with the most IP -- an 18-arm staff.
-    // Pre-arb players count (see teamScore above). Plain averages of teamScore.
+    // Pre-arb players count (see teamScore above).
+    //
+    // Within each group, a player's pull on the average is proportional to the
+    // playing time they actually gave: weight = min(workload / full-season
+    // workload, 1) -- PA for hitters, IP for pitchers (not games: a pinch-runner
+    // and a leadoff man both get a "game"). Capped at 1 so a 700-PA season
+    // doesn't count 40% more than a 500-PA one. Groups are then combined with
+    // fixed weights roughly matching where wins come from (about 57% of
+    // positive bWAR is hitters, 26% starters, 18% relievers) instead of by
+    // headcount, which let 13 relievers outvote 5 starters.
     const TEAM_SP_SLOTS = 5, TEAM_RP_SLOTS = 13;
-    const meanTeamScore = arr => arr.length ? arr.reduce((a, p) => a + p.teamScore, 0) / arr.length : 0;
+    const FULL_SEASON = { PA: 600, SP: 180, RP: 65 };
+    const TEAM_GROUP_WEIGHTS = { lineup: 0.55, rotation: 0.28, bullpen: 0.17 };
+    function teamWeight(p) {
+      const full = p.isBatter ? FULL_SEASON.PA : FULL_SEASON[p.position];
+      const work = p.isBatter ? p.volume * FULL_SEASON.PA : (p.stats.ip || 0);
+      return Math.min(work / full, 1);
+    }
+    allPlayers.forEach(p => { p.teamWeight = teamWeight(p); });
+    const weightedTeamScore = arr => {
+      const w = arr.reduce((a, p) => a + p.teamWeight, 0);
+      return w > 0 ? arr.reduce((a, p) => a + p.teamWeight * p.teamScore, 0) / w : null;
+    };
     teams.forEach(t => {
       const onTeam = allPlayers.filter(p => p.team === t.abbr);
       const byIp = pos => onTeam.filter(p => p.position === pos).sort((a, b) => (b.stats.ip || 0) - (a.stats.ip || 0));
       t.lineup = onTeam.filter(p => p.isBatter);
       t.rotation = byIp('SP').slice(0, TEAM_SP_SLOTS);
       t.bullpen = byIp('RP').slice(0, TEAM_RP_SLOTS);
-      t.lineupScore = meanTeamScore(t.lineup);
-      t.rotationScore = meanTeamScore(t.rotation);
-      t.bullpenScore = meanTeamScore(t.bullpen);
-      t.avgScore = meanTeamScore([...t.lineup, ...t.rotation, ...t.bullpen]);
+      t.lineupScore = weightedTeamScore(t.lineup);
+      t.rotationScore = weightedTeamScore(t.rotation);
+      t.bullpenScore = weightedTeamScore(t.bullpen);
+      // If a group is somehow empty, renormalize over the groups that exist.
+      const parts = [['lineup', t.lineupScore], ['rotation', t.rotationScore], ['bullpen', t.bullpenScore]]
+        .filter(([, v]) => v != null);
+      const wSum = parts.reduce((a, [k]) => a + TEAM_GROUP_WEIGHTS[k], 0);
+      t.avgScore = wSum > 0 ? parts.reduce((a, [k, v]) => a + TEAM_GROUP_WEIGHTS[k] * v, 0) / wSum : 0;
+      t.lineupScore = t.lineupScore == null ? 0 : t.lineupScore;
+      t.rotationScore = t.rotationScore == null ? 0 : t.rotationScore;
+      t.bullpenScore = t.bullpenScore == null ? 0 : t.bullpenScore;
     });
   }
 
