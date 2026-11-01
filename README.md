@@ -23,7 +23,6 @@ scripts/dev.sh
 ```
 The fastest way to run the project locally is `scripts/dev.sh` — it sets up the database and starts the server on `:8000`
 
-Open **http://localhost:8000/** for the dashboard and **http://localhost:8000/docs** for the API docs.
 
 
 ### Docker (recommended)
@@ -34,22 +33,15 @@ The whole app — Postgres, API, and dashboard — runs as two containers:
 docker compose up -d --build
 ```
 
-- **http://localhost:8000/** → the dashboard
-- **http://localhost:8000/docs** → API docs (Swagger UI)
-
-
 ## Architecture
 
 ### Repository layout
 
 - `backend/` — the Python pipeline (stat downloads, scoring, projections), the FastAPI service, database migrations, and validation/backtest tools (`backend/scripts/`).
-- `frontend/dashboard/` — the dashboard template (`dashboard_template.html`), embedded assets (fonts/textures), and `build_dashboard.py` which computes the live data snapshot for FastAPI.
+
+- `frontend/` — the dashboard template (`dashboard_template.html`), embedded assets (fonts/textures), and `build_dashboard.py` which computes the live data snapshot for FastAPI.
+
 - `scripts/` — local dev (`dev.sh`, `prod.sh`), automation, and scheduling helpers.
-- `docs/` — planning, testing, and migration notes.
-
-### Backend and frontend
-
-The backend is a **Python/FastAPI** service backed by Postgres (SQLAlchemy + Alembic migrations). The dashboard is a single HTML file (`dashboard_template.html`) that the API renders live: the `/` route inlines the current data snapshot and fonts at request time, so there's no separate frontend server, build toolchain, or offline build step. Edits to `frontend/dashboard/dashboard_template.html` take effect on the next page load (pass `?refresh=1` to immediately bypass the snapshot and template cache).
 
 
 ### Data sources
