@@ -4,7 +4,7 @@
 
 MLB Market Value explores the relationship between player salaries and on-field performance. It pulls stats from the **MLB Stats API**, **Statcast**, and **FanGraphs**, scores each player against their peers at the same position, compares that score to what the player is actually paid, and projects what their performance says they should earn.
 
-### Core logic
+## Core logic
 
 - **Performance score** — a weighted blend of ~12–13 advanced stats (expected hitting, contact quality, plate discipline, fielding), measured against the league average at the player's position.
 - **Value score** — the gap between a player's performance percentile and their salary percentile. A positive score means they're likely underpaid; a negative score means overpaid.
@@ -27,15 +27,12 @@ The fastest way to run the project locally is `scripts/dev.sh` — it sets up th
 
 ### Docker (recommended)
 
-The whole app — Postgres, API, and dashboard — runs as two containers:
-
 ```bash
 docker compose up -d --build
 ```
+The whole app — Postgres, API, and dashboard — runs as two containers:
 
-## Architecture
-
-### Repository layout
+## Architecture - Repository Layout
 
 - `backend/` — the Python pipeline (stat downloads, scoring, projections), the FastAPI service, database migrations, and validation/backtest tools (`backend/scripts/`).
 
