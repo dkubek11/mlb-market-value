@@ -1,5 +1,8 @@
 # Session Summary — MLB Market Value: API Contract Hardening, Schema Validation & Reliability Fixes
 
+> [!NOTE]
+> **Historical Reference**: This document records an exploratory session conducted on the feature branch `swa/frontend-consolidation`. On the `master` branch, the application uses the Python FastAPI live-rendering architecture (`frontend/dashboard/dashboard_template.html` served at `GET /`). See [`README.md`](../README.md) and [`docs/TESTING.md`](TESTING.md) for current production usage.
+
 **Session date:** 2026-08-12 → 2026-08-13
 **Branch:** `swa/frontend-consolidation` (working tree had pre-existing staged changes; nothing was committed this session)
 **Environment:** Linux, SQLite local-dev path (no Docker/Postgres), Python 3.13.12 venv at `backend/.venv`, Node v20.19.5, React 18 + Vite 5 + Vitest

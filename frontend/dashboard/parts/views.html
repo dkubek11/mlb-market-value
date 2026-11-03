@@ -49,7 +49,7 @@
 
     <details class="method">
       <summary>How to read this dashboard</summary>
-      <strong>How to read this:</strong> Score = performance percentile − (Pay weight × salary percentile), computed within same position and season. Positive means outperforming their pay grade (underpaid); negative means overpaid relative to position peers. Performance percentile comes from a weighted composite — 12 stats for batters (xwOBA, xBA, xSLG, Barrel%, Hard-Hit%, Chase%, Whiff%, K%, BB%, OAA, FRV, DRS), 13 for pitchers (xERA, xBA/Avg Exit Velo/Hard-Hit%/Barrel% Allowed, K%, BB%, Chase%/Whiff%/Z-Swing% Induced, Extension, Stuff+, Location+) — each stat scored as a z-score against the position average. Adjust any weight, including Pay, in the <strong>Weights</strong> tab and every score, grade, and salary projection on the site recomputes instantly. Minimum sample: 150 PA for batters, 50 IP for pitchers.
+      <strong>How to read this:</strong> Score = bWAR percentile − (Pay weight × salary percentile). Performance is what a player actually produced: Baseball-Reference WAR, ranked against all hitters (position-adjusted by WAR itself), all starters, or all relievers &mdash; playing time counts, so missing time lowers it. Salary percentile is within the player&rsquo;s own position. Positive means outperforming their pay grade (underpaid); negative means overpaid. A separate <strong>Predicted Score</strong> swaps actual bWAR for the bWAR their repeatable process stats (xwOBA, xERA, barrel rate, K%, &hellip;) say they should have produced; the gap between the two separates sustainable production from luck. Adjust the predicted-score weights, or Pay, in the <strong>Weights</strong> tab. Minimum sample: 150 PA for batters, 50 IP for starters, 25 IP for relievers.
       <br /><br />
       <strong>Pre-arbitration players skip the pay adjustment</strong> — by CBA rule they're paid at or near the league minimum almost regardless of performance, so weighing their salary would just penalize them for a number they don't control. Their Score is pure performance percentile, and they're broken out in the <strong>Pre-Arbitration</strong> tab with a projected market salary based on comparable-performing market-priced peers (Arbitration, Extension, or Free Agent deals) at their position.
       <br /><br />
@@ -70,7 +70,7 @@
           <tr>
             <th data-sort="name">Player</th>
             <th class="num" data-sort="salary">Salary</th>
-            <th class="num" data-sort="compPct">Perf %</th>
+            <th class="num" data-sort="compPct">bWAR %</th>
             <th class="num" data-sort="salPct">Pay %</th>
             <th class="num" data-sort="recommendedSalary">Rec. Pay</th>
             <th class="num" data-sort="score">Score</th>
@@ -120,7 +120,7 @@
             <th class="num" data-sort="ip">IP</th>
             <th class="num" data-sort="era">ERA</th>
             <th class="num" data-sort="k_minus_bb">K-BB%</th>
-            <th class="num" data-sort="war">fWAR</th>
+            <th class="num" data-sort="bwar">bWAR</th>
             <th class="num" data-sort="paySurplus">Surplus</th>
             <th>Value</th>
           </tr>
@@ -189,7 +189,7 @@
           <tr>
             <th data-sort="name">Player</th>
             <th class="num" data-sort="salary">Actual Salary</th>
-            <th class="num" data-sort="compPct">Perf %</th>
+            <th class="num" data-sort="compPct">bWAR %</th>
             <th class="num" data-sort="projectedSalary">Projected Salary</th>
             <th class="num" data-sort="surplus">Surplus</th>
           </tr>
@@ -212,7 +212,10 @@
           <tr>
             <th>Team</th>
             <th class="num">Payroll</th>
-            <th class="num">Avg Score</th>
+            <th class="num">Team Score</th>
+            <th class="num">Lineup</th>
+            <th class="num">Rotation</th>
+            <th class="num">Bullpen</th>
           </tr>
         </thead>
         <tbody id="team-rows"></tbody>
@@ -223,7 +226,7 @@
   <div id="custom-view" style="display:none">
     <div class="custom-intro">
       <h2>Weights</h2>
-      <p>These weights are the site's single source of truth &mdash; every score, grade, and projected salary on Home, Players, Pre-Arbitration, Teams, and the player card is computed live from them. Each stat is measured as a <strong>z-score</strong> against the position average, multiplied by its weight, and summed into a raw performance subtotal. That subtotal is converted to a percentile within the position, then <strong>Pay</strong> below blends in how well-paid the player is: <code>Score = performance percentile − (Pay weight × salary percentile)</code>. Pre-arbitration players are paid near the league minimum by rule, so they skip the pay adjustment entirely and their Score is just their performance percentile. Any weight you change here is saved in this browser and stays applied the next time you visit.</p>
+      <p>The site&rsquo;s <strong>Score</strong> ranks what a player actually produced: Baseball-Reference WAR, against all hitters, all starters, or all relievers. The weights below don&rsquo;t change that &mdash; they drive the <strong>Predicted Score</strong>: <em>expected bWAR</em>, i.e. what a player&rsquo;s repeatable process stats say their bWAR should have been given the playing time and position they had. Each weight is <strong>bWAR per full season (600 PA / 100 IP) for a one-standard-deviation-better stat</strong>, and the defaults were fit by non-negative least squares on every completed season 2015&ndash;2025 (they explain about <span id="ew-r2-bat">&mdash;</span> of hitter WAR and <span id="ew-r2-pit">&mdash;</span> of pitcher WAR out of sample). A stat at 0 adds nothing once the others are in (e.g. xSLG is already inside xwOBA). Both scores subtract <strong>Pay</strong>: <code>Score = bWAR percentile &minus; (Pay weight &times; salary percentile)</code>, with salary percentile within the player&rsquo;s position. Pre-arbitration players are paid near the league minimum by rule, so they skip the pay adjustment. Weights you change here are saved in this browser.</p>
     </div>
 
     <div class="weight-group">
@@ -260,7 +263,10 @@
             <th class="num" data-sort="rank">#</th>
             <th data-sort="name">Player</th>
             <th class="num" data-sort="score">Score</th>
-            <th class="num" data-sort="percentile">Percentile</th>
+            <th class="num" data-sort="predictedScore">Predicted</th>
+            <th class="num" data-sort="bwar">bWAR</th>
+            <th class="num" data-sort="expectedWar">Exp. bWAR</th>
+            <th class="num" data-sort="percentile">bWAR %</th>
             <th>Grade</th>
           </tr>
         </thead>

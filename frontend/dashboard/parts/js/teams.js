@@ -59,7 +59,7 @@
       (teamsFilter.team === 'All' || t.abbr === teamsFilter.team) &&
       (q === '' || t.name.toLowerCase().includes(q) || t.abbr.toLowerCase().includes(q))
     );
-    document.getElementById('team-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a team to see the roster' : '');
+    document.getElementById('team-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a team to see the roster · Team Score = 55% lineup, 28% rotation, 17% bullpen, each weighted by playing time' : '');
     document.getElementById('team-rows').innerHTML = rows.length ? rows.map(t => {
       const open = expandedTeam === t.abbr;
       const row = `
@@ -67,6 +67,9 @@
         <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${teamLogoImg(t.abbr, 18)}${t.name}</span><span class="team-tag">${t.abbr}</span></div></td>
         <td class="num" data-count="${t.payroll}" data-count-fmt="money">${fmtMoney(t.payroll)}</td>
         <td class="num">${valueBar(t.avgScore, maxAbs)}</td>
+        <td class="num ${t.lineupScore >= 0 ? 'good' : 'bad'}">${fmtSigned(t.lineupScore)}</td>
+        <td class="num ${t.rotationScore >= 0 ? 'good' : 'bad'}">${fmtSigned(t.rotationScore)}</td>
+        <td class="num ${t.bullpenScore >= 0 ? 'good' : 'bad'}">${fmtSigned(t.bullpenScore)}</td>
       </tr>`;
       return row + (open ? renderDiamondPanel(t, open && !pendingTeamOpen) : '');
     }).join('') : '<tr><td colspan="3"><div class="empty">No teams match that filter.</div></td></tr>';
@@ -305,7 +308,7 @@
   let pendingTeamClose = false;
 
   function renderDiamondPanel(team, expanded) {
-    return `<tr class="diamond-row" data-abbr="${team.abbr}"><td colspan="3"><div class="diamond-accordion${expanded ? ' expanded' : ''}"><div class="diamond-accordion-inner">
+    return `<tr class="diamond-row" data-abbr="${team.abbr}"><td colspan="7"><div class="diamond-accordion${expanded ? ' expanded' : ''}"><div class="diamond-accordion-inner">
       <div class="diamond-panel">
         <div class="diamond-head">
           <h3>${teamLogoImg(team.abbr, 24)}${team.name} — 2026 roster by position</h3>

@@ -1,41 +1,46 @@
   // --- Weighted composite scoring engine (this is the site's single source
   // of truth: every score/grade/value/projected-salary everywhere reads back
   // off the player objects that recomputeAll() below writes into) ---
+  // PREDICTED SCORE model. The Score everywhere on the site ranks what a
+  // player actually produced (bWAR); these weights drive the other half --
+  // "expected bWAR", what the player's repeatable process stats say their
+  // bWAR should have been given the playing time and position they had (see
+  // expected_war.py). Each weight is bWAR per full season (600 PA / 100 IP)
+  // for a one-standard-deviation-better stat, fit by non-negative least
+  // squares on 2015-2025, so the defaults are data-derived rather than
+  // hand-picked; the sliders let you override them.
+  const EW_MODEL = DATA.expectedWarModel;
   const BATTER_STAT_CONFIG = [
-    { key: 'xwoba', label: 'xwOBA', higherBetter: true, defaultWeight: 2.75, type: 'avg3' },
-    { key: 'xba', label: 'xBA', higherBetter: true, defaultWeight: 0.5, type: 'avg3' },
-    { key: 'xslg', label: 'xSLG', higherBetter: true, defaultWeight: 0.95, type: 'avg3' },
-    { key: 'barrel_rate', label: 'Barrel%', higherBetter: true, defaultWeight: 1.35, type: 'pct1' },
-    { key: 'hard_hit_rate', label: 'Hard-Hit%', higherBetter: true, defaultWeight: 1.25, type: 'pct1' },
-    { key: 'chase_rate', label: 'Chase%', higherBetter: false, defaultWeight: 0.75, type: 'fracPct1' },
-    { key: 'whiff_rate', label: 'Whiff%', higherBetter: false, defaultWeight: 0.8, type: 'fracPct1' },
-    // K% and BB% combined into one discipline signal instead of two separate
-    // sliders -- lower is better (fewer strikeouts relative to walks).
-    { key: 'k_minus_bb', label: 'K-BB%', higherBetter: false, defaultWeight: 1.5, type: 'fracPct1' },
-    { key: 'oaa', label: 'OAA', higherBetter: true, defaultWeight: 0.7, type: 'int' },
-    { key: 'frv', label: 'FRV', higherBetter: true, defaultWeight: 0.7, type: 'int' },
-    { key: 'drs', label: 'DRS', higherBetter: true, defaultWeight: 0.7, type: 'int' },
-    // Real, park/league-adjusted run production (100 = average) -- the one
-    // stat in this composite driven by actual outcomes rather than quality-
-    // of-contact process metrics, so a hit-tool-over-exit-velo player (or an
-    // unlucky quality-of-contact one) isn't graded purely on process.
-    { key: 'wrc_plus', label: 'wRC+', higherBetter: true, defaultWeight: 2.0, type: 'int' },
-  ];
+    { key: 'xwoba', label: 'xwOBA', higherBetter: true, type: 'avg3' },
+    { key: 'xslg', label: 'xSLG', higherBetter: true, type: 'avg3' },
+    { key: 'xba', label: 'xBA', higherBetter: true, type: 'avg3' },
+    { key: 'barrel_rate', label: 'Barrel%', higherBetter: true, type: 'pct1' },
+    { key: 'hard_hit_rate', label: 'Hard-Hit%', higherBetter: true, type: 'pct1' },
+    { key: 'k_rate', label: 'K%', higherBetter: false, type: 'fracPct1' },
+    { key: 'bb_rate', label: 'BB%', higherBetter: true, type: 'fracPct1' },
+    { key: 'chase_rate', label: 'Chase%', higherBetter: false, type: 'fracPct1' },
+    { key: 'whiff_rate', label: 'Whiff%', higherBetter: false, type: 'fracPct1' },
+    { key: 'sprint_speed', label: 'Sprint Speed', higherBetter: true, type: 'velo1' },
+    { key: 'sb', label: 'SB', higherBetter: true, type: 'int' },
+    { key: 'oaa', label: 'OAA', higherBetter: true, type: 'int' },
+    { key: 'frv', label: 'FRV', higherBetter: true, type: 'int' },
+    { key: 'drs', label: 'DRS', higherBetter: true, type: 'int' },
+  ].map(c => ({ ...c, defaultWeight: EW_MODEL.batter.weights[c.key] || 0 }));
   const PITCHER_STAT_CONFIG = [
-    { key: 'xera', label: 'xERA', higherBetter: false, defaultWeight: 2.0, type: 'rate2' },
-    { key: 'xba_against', label: 'xBA Allowed', higherBetter: false, defaultWeight: 1.0, type: 'avg3' },
-    { key: 'avg_exit_velo_against', label: 'Avg Exit Velo Allowed', higherBetter: false, defaultWeight: 0.8, type: 'velo1' },
-    { key: 'hard_hit_rate_against', label: 'Hard-Hit% Allowed', higherBetter: false, defaultWeight: 1.0, type: 'pct1' },
-    { key: 'barrel_rate_against', label: 'Barrel% Allowed', higherBetter: false, defaultWeight: 1.2, type: 'pct1' },
-    { key: 'k_rate', label: 'K%', higherBetter: true, defaultWeight: 1.5, type: 'fracPct1' },
-    { key: 'bb_rate', label: 'BB%', higherBetter: false, defaultWeight: 1.0, type: 'fracPct1' },
-    { key: 'chase_rate', label: 'Chase% Induced', higherBetter: true, defaultWeight: 1.0, type: 'fracPct1' },
-    { key: 'whiff_rate', label: 'Whiff% Induced', higherBetter: true, defaultWeight: 1.0, type: 'fracPct1' },
-    { key: 'z_swing_rate', label: 'Z-Swing% Induced', higherBetter: false, defaultWeight: 0.5, type: 'fracPct1' },
-    { key: 'extension', label: 'Extension', higherBetter: true, defaultWeight: 1.0, type: 'velo1' },
-    { key: 'stuff_plus', label: 'Stuff+', higherBetter: true, defaultWeight: 1.5, type: 'int' },
-    { key: 'location_plus', label: 'Location+', higherBetter: true, defaultWeight: 1.5, type: 'int' },
-  ];
+    { key: 'xera', label: 'xERA', higherBetter: false, type: 'rate2' },
+    { key: 'xba_against', label: 'xBA Allowed', higherBetter: false, type: 'avg3' },
+    { key: 'avg_exit_velo_against', label: 'Avg Exit Velo Allowed', higherBetter: false, type: 'velo1' },
+    { key: 'hard_hit_rate_against', label: 'Hard-Hit% Allowed', higherBetter: false, type: 'pct1' },
+    { key: 'barrel_rate_against', label: 'Barrel% Allowed', higherBetter: false, type: 'pct1' },
+    { key: 'k_rate', label: 'K%', higherBetter: true, type: 'fracPct1' },
+    { key: 'bb_rate', label: 'BB%', higherBetter: false, type: 'fracPct1' },
+    { key: 'chase_rate', label: 'Chase% Induced', higherBetter: true, type: 'fracPct1' },
+    { key: 'whiff_rate', label: 'Whiff% Induced', higherBetter: true, type: 'fracPct1' },
+    { key: 'z_swing_rate', label: 'Z-Swing% Induced', higherBetter: false, type: 'fracPct1' },
+    { key: 'extension', label: 'Extension', higherBetter: true, type: 'velo1' },
+    { key: 'stuff_plus', label: 'Stuff+', higherBetter: true, type: 'int' },
+    { key: 'location_plus', label: 'Location+', higherBetter: true, type: 'int' },
+  ].map(c => ({ ...c, defaultWeight: EW_MODEL.pitcher.weights[c.key] || 0 }));
   const battingWeights = {};
   BATTER_STAT_CONFIG.forEach(s => { battingWeights[s.key] = s.defaultWeight; });
   const pitchingWeights = {};
@@ -44,10 +49,9 @@
   let payWeight = DEFAULT_PAY_WEIGHT;
 
   // Custom weights persist in this browser across visits (localStorage, not
-  // the server) -- each slider change re-saves the full set. A stat added
-  // after a user's last visit (e.g. a saved set predating wRC+) just keeps
-  // its default since Object.assign only overwrites keys the saved set has.
-  const WEIGHTS_STORAGE_KEY = 'mlbMarketValue.customWeights.v1';
+  // the server) -- each slider change re-saves the full set. v2: weights are
+  // now bWAR-per-SD, not the old arbitrary composite scale.
+  const WEIGHTS_STORAGE_KEY = 'mlbMarketValue.customWeights.v2';
   function saveWeights() {
     try {
       localStorage.setItem(WEIGHTS_STORAGE_KEY, JSON.stringify({ battingWeights, pitchingWeights, payWeight }));
@@ -430,30 +434,29 @@
       const cfg = p.isBatter ? BATTER_STAT_CONFIG : PITCHER_STAT_CONFIG;
       const w = p.isBatter ? battingWeights : pitchingWeights;
       const posStats = positionStats[p.position] || {};
-      let total = 0;
+      // Expected bWAR (the Predicted Score's performance half): volume x
+      // (intercept + position/role baseline + sum of weight x oriented z).
+      // predZ is standardized server-side against the same population the
+      // model was trained on (expected_war.py); a stat the player is missing
+      // simply contributes 0 = league average, as in training.
+      const m = p.isBatter ? EW_MODEL.batter : EW_MODEL.pitcher;
+      const offset = p.isBatter ? (m.offsets[p.position] || 0) : (p.position === 'RP' ? (m.offsets.RP || 0) : 0);
+      const baseWar = (m.intercept + offset) * p.volume;
+      let expected = baseWar;
       const breakdown = cfg.map(s => {
-        const val = p.stats[s.key];
-        const ps = posStats[s.key];
-        let z = null, contribution = 0;
-        if (val != null && ps && ps.std > 0) {
-          const rawZ = (val - ps.mean) / ps.std;
-          z = s.higherBetter ? rawZ : -rawZ;
-          contribution = z * w[s.key];
-          total += contribution;
-        }
-        return { ...s, value: val, z, contribution };
+        const z = p.predZ[s.key] != null ? p.predZ[s.key] : null;
+        const contribution = z != null ? z * w[s.key] * p.volume : 0;
+        expected += contribution;
+        return { ...s, value: p.stats[s.key], z, contribution };
       });
-      // rawScore is the pure stat-weighted composite (no pay). p.score, set
-      // below, is the single number shown everywhere on the site: rawScore
-      // converted to a percentile and blended with the salary percentile.
-      p.rawScore = total;
+      p.expectedWar = expected;
+      p.baseWar = baseWar;
       p.breakdown = breakdown;
 
       // Traditional-stat composite (see BATTER_ARB_CONFIG/PITCHER_ARB_CONFIG
-      // above), ranked into arbCompPct below the same way rawScore becomes
-      // compPct. Computed for every player, not just arb-eligible ones, so
-      // arb-eligible players have real peers (at any pay status) to compute
-      // a percentile against.
+      // above), ranked into arbCompPct below. Computed for every player, not
+      // just arb-eligible ones, so arb-eligible players have real peers (at
+      // any pay status) to compute a percentile against.
       const arbCfg = p.isBatter ? BATTER_ARB_CONFIG : PITCHER_ARB_CONFIG;
       let arbTotal = 0;
       arbCfg.forEach(s => {
@@ -520,13 +523,37 @@
     const byPos = {};
     allPlayers.forEach(p => { (byPos[p.position] = byPos[p.position] || []).push(p); });
 
-    Object.values(byPos).forEach(group => {
-      const byRaw = [...group].sort((a, b) => a.rawScore - b.rawScore);
-      byRaw.forEach((p, i) => {
-        p.compPct = byRaw.length > 1 ? (i / (byRaw.length - 1)) * 100 : 100;
+    // Performance (bWAR) is ranked in three pools -- all hitters together, SP,
+    // RP -- NOT within each position: bWAR already carries its own position
+    // adjustment, and no playing-time floor beyond the dashboard's own
+    // qualifying bar (a player who missed time simply produced less).
+    // Ties share their average rank. The same pools rank expected bWAR so the
+    // two percentiles are directly comparable. Salary percentile (salPct,
+    // below) deliberately stays within exact position.
+    const poolFor = p => (p.isBatter ? 'batter' : p.position);
+    const perfPools = {};
+    allPlayers.forEach(p => { (perfPools[poolFor(p)] = perfPools[poolFor(p)] || []).push(p); });
+    function rankInto(group, valueOf, key) {
+      const sorted = [...group].sort((a, b) => valueOf(a) - valueOf(b));
+      let i = 0;
+      while (i < sorted.length) {
+        let j = i;
+        while (j + 1 < sorted.length && valueOf(sorted[j + 1]) === valueOf(sorted[i])) j++;
+        const pct = sorted.length > 1 ? (((i + j) / 2) / (sorted.length - 1)) * 100 : 100;
+        for (let k = i; k <= j; k++) sorted[k][key] = pct;
+        i = j + 1;
+      }
+    }
+    Object.values(perfPools).forEach(group => {
+      rankInto(group, p => (p.stats.bwar != null ? p.stats.bwar : 0), 'compPct');
+      rankInto(group, p => p.expectedWar, 'expectedPct');
+      group.forEach(p => {
         p.grade = gradeFor(p.compPct);
+        p.warGap = (p.stats.bwar != null ? p.stats.bwar : 0) - p.expectedWar;
       });
+    });
 
+    Object.values(byPos).forEach(group => {
       const byArbRaw = [...group].sort((a, b) => a.rawArbScore - b.rawArbScore);
       byArbRaw.forEach((p, i) => {
         p.arbCompPct = byArbRaw.length > 1 ? (i / (byArbRaw.length - 1)) * 100 : 100;
@@ -552,9 +579,9 @@
     // matching. Splitting this strictly by position starved thin positions
     // (as few as 8 true comps at some spots) of real market data, which let
     // the adaptive widening below reach for a handful of expensive outliers
-    // and badly overshoot low-percentile players there. compPct above is
-    // still computed within position and still drives Score/grade -- this
-    // only widens which players are eligible to be pulled in as a dollar
+    // and badly overshoot low-percentile players there. compPct above is now
+    // ranked in the hitter/SP/RP performance pools and drives Score/grade --
+    // this only widens which players are eligible to be pulled in as a dollar
     // comp. Tradeoff worth flagging: this assumes comparable pay scales
     // across positions at the same percentile rank, which isn't strictly
     // true in the real market (a 90th-percentile-for-position closer isn't
@@ -567,7 +594,6 @@
     // small-sample rate stats can rank alongside an elite ace's on compPct
     // while paying a fraction as much), so merging them let elite-percentile
     // relievers drag down comp values for elite starters and vice versa.
-    const poolFor = p => (p.isBatter ? 'batter' : p.position);
     const leagueTrueMarket = {
       batter: allPlayers.filter(p => p.isBatter && !p.isPreArb && !isArbEligible(p)),
       SP: allPlayers.filter(p => p.position === 'SP' && !p.isPreArb && !isArbEligible(p)),
@@ -658,6 +684,8 @@
       bySalary.forEach((p, i) => {
         p.salPct = bySalary.length > 1 ? (i / (bySalary.length - 1)) * 100 : 100;
         p.score = p.compPct - payWeight * p.salPct;
+        p.predictedScore = p.expectedPct - payWeight * p.salPct;
+        p.teamScore = p.score;
       });
 
       // Rank players by their blended (Marcel + comparable-player) projected
@@ -682,6 +710,16 @@
       group.filter(p => p.isPreArb).forEach(p => {
         p.salPct = null;
         p.score = p.compPct;
+        p.predictedScore = p.expectedPct;
+        // Team/rotation/bullpen scores include pre-arb players too (they hit
+        // and pitch), but their displayed Score skips the pay adjustment and
+        // would sit on a different scale. teamScore applies the SAME formula
+        // using where their near-minimum salary would slot among market
+        // salaries at the position. For market players teamScore === score.
+        const cheaper = bySalary.filter(m => m.aav < p.aav).length;
+        const same = bySalary.filter(m => m.aav === p.aav).length;
+        const impliedSalPct = bySalary.length ? ((cheaper + same / 2) / bySalary.length) * 100 : 0;
+        p.teamScore = p.compPct - payWeight * impliedSalPct;
       });
 
       // Recommended pay: what a player's performance level says they're
@@ -817,9 +855,46 @@
       });
     });
 
+    // Team scores use the people who actually played, not just market-priced
+    // regulars: every hitter in the scoring pool, the 5 SP with the most IP,
+    // and the 13 RP with the most IP -- an 18-arm staff. Pre-arb players
+    // count (see teamScore above).
+    //
+    // Within each group, a player's pull on the average is proportional to
+    // the playing time they actually gave: weight = min(workload / full-season
+    // workload, 1) -- PA for hitters, IP for pitchers. Capped at 1 so a
+    // 700-PA season doesn't count 40% more than a 500-PA one. Groups are
+    // combined at 55% lineup / 28% rotation / 17% bullpen, roughly where
+    // positive bWAR comes from, instead of by headcount.
+    const TEAM_SP_SLOTS = 5, TEAM_RP_SLOTS = 13;
+    const FULL_SEASON = { PA: 600, SP: 180, RP: 65 };
+    const TEAM_GROUP_WEIGHTS = { lineup: 0.55, rotation: 0.28, bullpen: 0.17 };
+    function teamWeight(p) {
+      const full = p.isBatter ? FULL_SEASON.PA : FULL_SEASON[p.position];
+      const work = p.isBatter ? p.volume * FULL_SEASON.PA : (p.stats.ip || 0);
+      return Math.min(work / full, 1);
+    }
+    allPlayers.forEach(p => { p.teamWeight = teamWeight(p); });
+    const weightedTeamScore = arr => {
+      const w = arr.reduce((a, p) => a + p.teamWeight, 0);
+      return w > 0 ? arr.reduce((a, p) => a + p.teamWeight * p.teamScore, 0) / w : null;
+    };
     teams.forEach(t => {
-      const roster = allPlayers.filter(p => p.team === t.abbr && !p.isPreArb && p.score != null);
-      t.avgScore = roster.length ? roster.reduce((a, p) => a + p.score, 0) / roster.length : 0;
+      const onTeam = allPlayers.filter(p => p.team === t.abbr);
+      const byIp = pos => onTeam.filter(p => p.position === pos).sort((a, b) => (b.stats.ip || 0) - (a.stats.ip || 0));
+      t.lineup = onTeam.filter(p => p.isBatter);
+      t.rotation = byIp('SP').slice(0, TEAM_SP_SLOTS);
+      t.bullpen = byIp('RP').slice(0, TEAM_RP_SLOTS);
+      t.lineupScore = weightedTeamScore(t.lineup);
+      t.rotationScore = weightedTeamScore(t.rotation);
+      t.bullpenScore = weightedTeamScore(t.bullpen);
+      const parts = [['lineup', t.lineupScore], ['rotation', t.rotationScore], ['bullpen', t.bullpenScore]]
+        .filter(([, v]) => v != null);
+      const wSum = parts.reduce((a, [k]) => a + TEAM_GROUP_WEIGHTS[k], 0);
+      t.avgScore = wSum > 0 ? parts.reduce((a, [k, v]) => a + TEAM_GROUP_WEIGHTS[k] * v, 0) / wSum : 0;
+      t.lineupScore = t.lineupScore == null ? 0 : t.lineupScore;
+      t.rotationScore = t.rotationScore == null ? 0 : t.rotationScore;
+      t.bullpenScore = t.bullpenScore == null ? 0 : t.bullpenScore;
     });
   }
 

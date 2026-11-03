@@ -19,6 +19,7 @@ from app.models import (
     Team,
 )
 from app.pipeline import (
+    bwar,
     fangraphs_batting,
     fangraphs_pitching,
     fangraphs_salary,
@@ -255,6 +256,13 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
     except Exception as exc:
         print(f"WARNING: FanGraphs pitcher plate-discipline fetch failed ({exc!r}); continuing without it")
         pitcher_discipline = {}
+    # bWAR is a nice-to-have enhancement like the FanGraphs fetches above:
+    # a Baseball-Reference outage shouldn't abort the whole season's ingest.
+    try:
+        bwar_by_player = bwar.fetch_season(season)
+    except Exception as exc:
+        print(f"WARNING: Baseball-Reference bWAR fetch failed ({exc!r}); continuing without it")
+        bwar_by_player = {"bat": {}, "pit": {}}
     print(f"[{season}] fetching pitch-by-pitch Statcast data for release extension...")
     pitcher_extension = statcast_extension.fetch_extension(season)
 
@@ -319,6 +327,7 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
                 chase_rate=pd_row.get("chase_rate"),
                 whiff_rate=pd_row.get("whiff_rate"),
                 war=pd_row.get("war"),
+                bwar=bwar_by_player["bat"].get(pid),
                 wrc_plus=pd_row.get("wrc_plus"),
                 source=SOURCE_STATS,
                 scraped_at=now,
@@ -389,6 +398,7 @@ def ingest_season(db: Session, season: int, include_salary: bool = True) -> None
                 stuff_plus=pd_row.get("stuff_plus"),
                 location_plus=pd_row.get("location_plus"),
                 war=pd_row.get("war"),
+                bwar=bwar_by_player["pit"].get(pid),
                 source=SOURCE_STATS,
                 scraped_at=now,
             )

@@ -285,7 +285,7 @@
   function bullpenVal(p, key) {
     if (key === 'paySurplus') return p.paySurplus;
     if (key === 'k_minus_bb') return kMinusBbPct(p);
-    if (key === 'war') return p.stats.war;
+    if (key === 'bwar') return p.stats.bwar;
     return p.stats[key] != null ? p.stats[key] : null;
   }
   function renderBullpen() {
@@ -305,7 +305,7 @@
     });
     document.getElementById('bullpen-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for their card' : '');
     document.getElementById('bullpen-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => {
-      const ip = p.stats.ip, era = p.stats.era, war = p.stats.war;
+      const ip = p.stats.ip, era = p.stats.era, war = p.stats.bwar;
       const kbb = kMinusBbPct(p);
       return `<tr class="row-toggle" data-idx="${i}">
         <td><span class="chevron">▸</span>${playerNameCellHtml(p)}</td>

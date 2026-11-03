@@ -17,7 +17,7 @@
     return rec.paySurplus != null ? fmtSigned(rec.paySurplus / 1e6) + 'M' : '—';
   }
   function warVal(rec) {
-    return rec.stats && rec.stats.war != null ? rec.stats.war.toFixed(1) : '—';
+    return rec.stats && rec.stats.bwar != null ? rec.stats.bwar.toFixed(1) : '—';
   }
   function leagueOf(p) {
     const lg = teamAbbrToLeague[p.team];
@@ -164,7 +164,7 @@
       return `<div class="tier-block">
         <div class="tier-head">${title}</div>
         <table class="mini-table">
-          <thead><tr><th>Player</th><th class="num">ERA</th><th class="num">K-BB%</th><th class="num">fWAR</th><th class="num">Surplus</th></tr></thead>
+          <thead><tr><th>Player</th><th class="num">ERA</th><th class="num">K-BB%</th><th class="num">bWAR</th><th class="num">Surplus</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>`;
@@ -181,13 +181,13 @@
 
   function renderRotations() {
     const aggs = teams.map(t => {
-      const sps = marketPlayers.filter(p => p.team === t.abbr && p.position === 'SP');
-      if (sps.length < 2) return null;
+      const sps = t.rotation;
+      if (!sps || sps.length < 2) return null;
       const fips = sps.map(p => p.stats.fip).filter(v => v != null);
       return {
         name: t.name, abbr: t.abbr,
-        sps: [...sps].sort((a, b) => b.score - a.score),
-        avgScore: sps.reduce((a, p) => a + p.score, 0) / sps.length,
+        sps,
+        avgScore: t.rotationScore,
         avgFip: fips.length ? fips.reduce((a, v) => a + v, 0) / fips.length : null,
         totalIp: sps.reduce((a, p) => a + (p.stats.ip || 0), 0),
         payroll: sps.reduce((a, p) => a + (p.aav || 0), 0),
@@ -199,10 +199,12 @@
       const expanded = expandedRotationTeams.has(t.abbr);
       const playersHtml = expanded
         ? `<table class="mini-table rotation-players">
-            <thead><tr><th>Player</th><th class="num">Score</th></tr></thead>
+            <thead><tr><th>Player</th><th class="num">IP</th><th class="num" title="Share of a full 180-IP starter workload; scales this pitcher's pull on the rotation score">Weight</th><th class="num">Score</th></tr></thead>
             <tbody>${t.sps.map(p => `<tr data-pidx="${pushHomeRow(p)}">
           <td>${playerNameCellHtml(p)}</td>
-              <td class="num ${p.score >= 0 ? 'good' : 'bad'}">${fmtSigned(p.score)}</td>
+              <td class="num">${Math.round(p.stats.ip || 0)}</td>
+              <td class="num">${p.teamWeight.toFixed(2)}</td>
+              <td class="num ${p.teamScore >= 0 ? 'good' : 'bad'}">${fmtSigned(p.teamScore)}</td>
             </tr>`).join('')}</tbody>
           </table>`
         : '';
@@ -213,11 +215,11 @@
       </div>
       ${playersHtml}`;
     };
-    const bestRows = best.length ? best.map(row).join('') : '<div class="empty">No rotations with 2+ qualifying SP in this build.</div>';
-    const worstRows = worst.length ? worst.map(row).join('') : '<div class="empty">No rotations with 2+ qualifying SP in this build.</div>';
+    const bestRows = best.length ? best.map(row).join('') : '<div class="empty">No rotations with 2+ starters in this build.</div>';
+    const worstRows = worst.length ? worst.map(row).join('') : '<div class="empty">No rotations with 2+ starters in this build.</div>';
     document.getElementById('explore-rotations').innerHTML = `
       <div class="preview-head">
-        <h3>Best / Worst Rotations <span class="preview-sub">per-team SP aggregates — avg value score</span></h3>
+        <h3>Best / Worst Rotations <span class="preview-sub">each team's top 5 SP by IP — innings-weighted avg value score</span></h3>
       </div>
       <div class="explore-subhead good">Best — highest avg score</div>
       ${bestRows}

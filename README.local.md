@@ -1,18 +1,17 @@
 # MLB Market Value — Local Development Setup
 
-This guide covers the **zero-infrastructure local development path**. No Postgres server installation or Docker is required — the app uses a local SQLite database by default.
+This guide covers the **zero-infrastructure local development path**. No Postgres server installation or Docker is required — local helper scripts (`scripts/dev.sh`, `scripts/prod.sh`) configure a local SQLite database by default.
 
 > If you want a production-like Postgres stack, see [README.md](README.md) (Docker Compose).
 
 ## Quick Start
 
-The fastest path is the one-command script (venv + migrations + dashboard build +
-API server, all in one):
+The fastest path is to initialize the venv and launch the dev script (migrations + API server):
 
 ```bash
 python -m venv backend/.venv          # first time only
 backend/.venv/bin/pip install -r backend/requirements.txt
-scripts/dev.sh                        # migrations -> build dashboard -> uvicorn on :8000
+scripts/dev.sh                        # migrations -> uvicorn on :8000
 ```
 
 Open **http://localhost:8000/** for the dashboard, and **http://localhost:8000/docs**
@@ -26,12 +25,15 @@ python -m venv .venv
 source .venv/bin/activate      # macOS/Linux
 # .venv\Scripts\activate       # Windows
 pip install -r requirements.txt
+
+# Create .env with SQLite URL (or pass DATABASE_URL with each command):
+echo 'DATABASE_URL=sqlite:///mlb_market_value.db' > .env
+
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
 That's it. The database file `mlb_market_value.db` is created automatically in `backend/`.
-For SQLite local dev you do **not** need a `.env` file (see §2 below).
 
 The dashboard is assembled from source parts — no separate frontend server or
 build toolchain. `GET /` concatenates `frontend/dashboard/parts/` and inlines the
@@ -45,8 +47,8 @@ minutes).
 | | Local dev (this file) | Docker (README.md) |
 |---|---|---|
 | Database | SQLite file (`mlb_market_value.db`) | Postgres container |
-| Setup steps | 1 command (`scripts/dev.sh`) | `docker compose up -d --build` |
-| `.env` needed | No — SQLite via `DATABASE_URL` override | Yes — `DATABASE_URL` required |
+| Setup steps | `scripts/dev.sh` (after venv init) | `docker compose up -d --build` |
+| `.env` needed | Optional (defaults in `scripts/dev.sh`, or set `DATABASE_URL=sqlite:///...`) | No (set inside `docker-compose.yml`) |
 | Migrations | `alembic upgrade head` (dev.sh does it) | Automatic on container boot |
 | Data ingest | Manual (`python -m app.pipeline.run_ingest`) | Automatic on container boot |
 | Frontend dev | Single HTML template rendered live at `/` | Same, served by API container |
@@ -124,18 +126,24 @@ page to see changes.
 The API's `/` route inlines the current data snapshot (computed by
 `frontend/dashboard/build_dashboard.py`'s `build_dashboard_data()`) and the
 fonts at request time. The rendered page is cached for 30 minutes; pass
-`?refresh=1` to force a fresh snapshot. `GET /api/dashboard` returns the same
-data as JSON for any client that wants it without the HTML.
+`?refresh=1` to force a fresh snapshot and re-read the template from disk.
+`GET /api/dashboard` returns the same data as JSON for any client that wants
+it without the HTML.
 
-### 7. Validate the API contract (optional)
+### 7. Validate the API contract and projections (optional)
 
 `backend/scripts/validate_api_schema.py` validates the `/api/dashboard` payload
-against Pydantic models. See [docs/TESTING.md](docs/TESTING.md) §10 for the full
-parity procedure.
+against Pydantic models. See [docs/TESTING.md](docs/TESTING.md#5-api-schema-contract-validation) (§5) for details.
 
 ```bash
 cd backend
-DATABASE_URL="sqlite:///./mlb_market_value.db" .venv/bin/python -m scripts.validate_api_schema --season 2026
+DATABASE_URL="sqlite:///./mlb_market_value.db" python -m scripts.validate_api_schema --season 2026
+```
+
+To backtest projection engine accuracy against historical outcomes (2018–2025):
+
+```bash
+DATABASE_URL="sqlite:///./mlb_market_value.db" python -m scripts.backtest_projections
 ```
 
 ## Database Notes
@@ -183,6 +191,21 @@ DATABASE_URL="sqlite:///./mlb_market_value.db" python -m app.pipeline.run_ingest
 DATABASE_URL="sqlite:///./mlb_market_value.db" python -m app.pipeline.run_compute_value --season 2023
 ```
 
+### Maintenance & Backfill Scripts
+
+The `backend/scripts/` directory contains utilities for backfilling specific datasets into existing databases without running a full re-ingest:
+
+```bash
+# Backfill hits, games, WAR, and wRC+ for historical seasons (2021–2025):
+DATABASE_URL="sqlite:///./mlb_market_value.db" python -m scripts.backfill_traditional_stats
+
+# Backfill MVP, Cy Young, ROY, All-Star, Silver Slugger, Gold Glove awards (2018–2026):
+DATABASE_URL="sqlite:///./mlb_market_value.db" python -m scripts.backfill_awards
+
+# Backfill historical MLBTR arbitration settlements and service times (2016–2026):
+DATABASE_URL="sqlite:///./mlb_market_value.db" python -m scripts.backfill_arb_outcomes
+```
+
 ## Dashboard: Live Rendering
 
 The dashboard is **assembled from source parts** (`frontend/dashboard/parts/`)
@@ -209,7 +232,11 @@ See [README.md](README.md) for full Docker documentation, environment variables,
 
 ## Scheduling
 
-`scripts/nightly_refresh.ps1` runs the full pipeline (ingest → compute value → frontend tests → rebuild dashboard) and logs to `scripts/logs/`. Register it as a Windows Task Scheduler job:
+The refresh scripts run the full pipeline (ingest → compute value) and log to `scripts/logs/`.
+
+### Windows (Task Scheduler)
+
+Register `scripts/nightly_refresh.ps1` as a Windows Task Scheduler job:
 
 ```powershell
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-ExecutionPolicy Bypass -File "<repo path>\scripts\nightly_refresh.ps1"'
@@ -219,6 +246,15 @@ Register-ScheduledTask -TaskName "MLBMarketValueNightlyRefresh" -Action $action 
 ```
 
 The task only runs while the machine is on; if asleep/off at 3am, `-StartWhenAvailable` runs it on next wake.
+
+### macOS / Linux (cron)
+
+Make `scripts/nightly_refresh.sh` executable (`chmod +x scripts/nightly_refresh.sh`) and add an entry via `crontab -e`:
+
+```bash
+# Run daily at 3:00 AM
+0 3 * * * /path/to/mlb-market-value/scripts/nightly_refresh.sh
+```
 
 ## Methodology Notes
 
@@ -238,8 +274,9 @@ assembles `frontend/dashboard/parts/` relative to the backend (`main.py`). Run
 `uvicorn` from `backend/` (or set `PYTHONPATH=backend`).
 
 **Dashboard shows "No qualified players found for the YYYY season yet"**
-The season hasn't been ingested (or players don't meet the 150 PA / 50 IP
-qualification bar). Run the pipeline for that season and rebuild.
+The season hasn't been ingested (or players don't meet the qualification bar:
+150 PA for batters, 50 IP for SP, 25 IP for RP). Run the pipeline for that
+season and reload the page.
 
 **Port 8000 already in use**
 Kill the conflicting process, or run uvicorn on a different port:

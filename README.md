@@ -4,7 +4,7 @@
 
 MLB Market Value explores the relationship between player salaries and on-field performance. It pulls stats from the **MLB Stats API**, **Statcast**, and **FanGraphs**, scores each player against their peers at the same position, compares that score to what the player is actually paid, and projects what their performance says they should earn.
 
-### Core logic
+## Core logic
 
 - **Performance score** — a weighted blend of ~12–13 advanced stats (expected hitting, contact quality, plate discipline, fielding), measured against the league average at the player's position.
 - **Value score** — the gap between a player's performance percentile and their salary percentile. A positive score means they're likely underpaid; a negative score means overpaid.
@@ -16,36 +16,29 @@ MLB Market Value explores the relationship between player salaries and on-field 
 
 ### Quick start (SQLite)
 
-The fastest way to run the project locally is `scripts/dev.sh` — it sets up the database and starts the server on `:8000`:
-
 ```bash
 python -m venv backend/.venv                                   # first time only
 backend/.venv/bin/pip install -r backend/requirements.txt      # first time only
 scripts/dev.sh
 ```
+The fastest way to run the project locally is `scripts/dev.sh` — it sets up the database and starts the server on `:8000`
 
-Open **http://localhost:8000/** for the dashboard and **http://localhost:8000/docs** for the API docs. No Postgres or `.env` file is needed — a local SQLite database is created automatically. The script doesn't download stats on its own; use Docker for a fully automatic setup, or run the ingest/compute steps under [Local development](#local-development-postgres-no-docker) once and then re-run `scripts/dev.sh` to refresh the dashboard. `scripts/prod.sh` is the same flow without auto-reload.
+
 
 ### Docker (recommended)
-
-The whole app — Postgres, API, and dashboard — runs as two containers:
 
 ```bash
 docker compose up -d --build
 ```
+The whole app — Postgres, API, and dashboard — runs as two containers:
 
-- **http://localhost:8000/** → the dashboard
-- **http://localhost:8000/docs** → API docs (Swagger UI)
-- Postgres is exposed on host port **5433** (`psql -p 5433 -U postgres -d mlb_market_value`, password `postgres`) so it won't clash with a system Postgres on 5432.
-- The database lives in the named volume `mlb_mv_pgdata` and survives `docker compose down`; use `docker compose down -v` to wipe everything.
+## Architecture - Repository Layout
 
-On startup the container runs migrations, downloads the current season's data, computes values, builds the dashboard, and boots the API. Every step is idempotent, so restarts are fast. By default it ingests the current season (2026) only; set `HISTORY_SEASONS=3` before `docker compose up` to also backfill prior seasons for projection history:
+- `backend/` — the Python pipeline (stat downloads, scoring, projections), the FastAPI service, database migrations, and validation/backtest tools (`backend/scripts/`).
 
-```bash
-SEASON=2026 HISTORY_SEASONS=3 docker compose up -d --build
-```
+- `frontend/dashboard/` — the live-rendered dashboard source (`parts/`: `head/topbar/views.html` plus one JS module per feature), embedded assets (fonts/textures), and `build_dashboard.py` which computes the live data snapshot for FastAPI.
 
-> Backfilling prior seasons downloads a large amount of pitch-level data and can run out of memory on machines with limited RAM. If the API container crashes (exit code -9), stick with the default `HISTORY_SEASONS=0` — a single-season dashboard is fully functional.
+- `scripts/` — local dev (`dev.sh`, `prod.sh`), automation, and scheduling helpers.
 
 ### Local development (Postgres, no Docker)
 
@@ -92,11 +85,12 @@ The backend is a **Python/FastAPI** service backed by Postgres (SQLAlchemy + Ale
 
 | Source | Data |
 | --- | --- |
-| MLB Stats API | Traditional batting/pitching stats |
-| Statcast (pybaseball) | Expected stats (xBA/xSLG/xwOBA), exit velocity |
+| MLB Stats API | Traditional batting/pitching stats, player bios, and major awards (MVP, Cy Young, ROY, All-Star, Silver Slugger, Gold Glove) |
+| Statcast (pybaseball) | Expected stats (xBA/xSLG/xwOBA), contact quality, exit velocity, and Outs Above Average (OAA) / Fielder Run Value (FRV) |
 | Statcast (pitch-level) | Full-season pitch-by-pitch data for pitcher release extension |
-| FanGraphs | Batter/pitcher plate discipline (chase%, whiff%), Stuff+/Location+ for pitchers, DRS fielding |
-| RosterResource (via FanGraphs) | Contracts and salary data |
+| FanGraphs | Batter/pitcher plate discipline (chase%, whiff%), Stuff+/Location+ for pitchers, DRS fielding, and fWAR / wRC+ |
+| RosterResource (via FanGraphs) | Current contracts and salary data |
+| MLB Trade Rumors (MLBTR) | Official arbitration service time (years.days) and historical arbitration settlements |
 | MLB CDN | Player headshots and team logos (dashboard assets only) |
 
 **Coverage:**

@@ -29,6 +29,7 @@ from app.pipeline.projections import (
     compute_batter_projections_future_years, compute_pitcher_projections_future_years,
     BATTER_PROJECTION_STATS, PITCHER_PROJECTION_STATS, blend_projections,
 )
+from app.pipeline import expected_war
 from app.pipeline.comp_projections import compute_batter_comp_projections, compute_pitcher_comp_projections
 from app.pipeline.fangraphs_salary import TEAM_SLUG_TO_ABBREVIATION, fetch_team_contracts
 from app.pipeline import mlbtr_arbitration
@@ -83,9 +84,20 @@ def build_dashboard_data(season: int) -> dict:
 
     Usage: build_dashboard_data(2026)
     """
+    # "Qualified" bars: used for the Statcast-style percentile bars on player
+    # cards (positionStats below) and the multi-season history windows, so those
+    # keep comparing against full-time peers only.
     MIN_BATTER_PA = 150
     MIN_IP_SP = 50
     MIN_IP_RP = 25
+    # Who gets SCORED is wider than who qualifies, so team/rotation/bullpen
+    # scores reflect the people who actually played: every position player with
+    # more than 30 games, plus each team's top-N pitchers by innings (5 SP and
+    # 13 RP = an 18-arm staff) even if they fall under the IP bars above. Anyone
+    # who clears the old IP bars is still included, so nobody disappears.
+    MIN_BATTER_GAMES = 30
+    TEAM_SP_SLOTS = 5
+    TEAM_RP_SLOTS = 13
     POS_MAP = {"FIRST_BASE": "1B", "SECOND_BASE": "2B", "THIRD_BASE": "3B"}
 
     def _as_date(value):
@@ -111,7 +123,7 @@ def build_dashboard_data(season: int) -> dict:
     BATTER_STATS = ["ba", "obp", "slg", "xwoba", "xba", "xslg", "hr", "rbi", "sb",
                      "barrel_rate", "hard_hit_rate", "sprint_speed",
                      "chase_rate", "whiff_rate", "k_rate", "bb_rate", "k_minus_bb", "oaa", "frv", "drs",
-                     "hits", "games", "war", "wrc_plus"]
+                     "hits", "games", "bwar", "wrc_plus"]
 
 
     def _add_k_minus_bb(df: pd.DataFrame) -> pd.DataFrame:
@@ -124,7 +136,7 @@ def build_dashboard_data(season: int) -> dict:
                       "hard_hit_rate_against", "barrel_rate_against", "xba_against",
                       "avg_exit_velo_against", "chase_rate", "whiff_rate", "k_rate", "bb_rate",
                       "z_swing_rate", "extension", "stuff_plus", "location_plus",
-                      "wins", "saves", "games_started", "ip", "war"]
+                      "wins", "saves", "games_started", "ip", "bwar"]
 
     BATTER_Q = text("""
         SELECT bs.player_id, p.full_name, t.abbreviation AS team, ps.position AS position,
@@ -133,33 +145,41 @@ def build_dashboard_data(season: int) -> dict:
                bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
                bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
                fs.oaa, fs.frv, fs.drs,
-               bs.hits, bs.games, bs.war, bs.wrc_plus
+               bs.hits, bs.games, bs.bwar, bs.wrc_plus
         FROM batter_stats bs
         JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
         JOIN players p ON p.player_id = bs.player_id
         JOIN teams t ON t.team_id = ps.team_id
         LEFT JOIN player_salaries sal ON sal.player_id = bs.player_id AND sal.season = bs.season
         LEFT JOIN fielding_stats fs ON fs.player_id=bs.player_id AND fs.season=bs.season
-        WHERE bs.season=:season AND bs.pa >= :min_pa AND bs.xwoba IS NOT NULL
+        WHERE bs.season=:season AND bs.games > :min_games AND bs.xwoba IS NOT NULL
     """)
 
     PITCHER_Q = text("""
+        WITH ranked AS (
+            SELECT ps_s.player_id,
+                   ROW_NUMBER() OVER (PARTITION BY ps.team_id, ps.position ORDER BY ps_s.ip DESC) AS ip_rank
+            FROM pitcher_stats ps_s
+            JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
+            WHERE ps_s.season=:season
+        )
         SELECT ps_s.player_id, p.full_name, t.abbreviation AS team, ps.position AS position,
                sal.salary, sal.aav, sal.contract_type, sal.service_time, ps_s.ip, p.debut_date,
                ps_s.era, ps_s.whip, ps_s.fip, ps_s.xera, ps_s.k_9, ps_s.bb_9,
                ps_s.hard_hit_rate_against, ps_s.barrel_rate_against, ps_s.xba_against,
                ps_s.avg_exit_velo_against, ps_s.chase_rate, ps_s.whiff_rate, ps_s.k_rate, ps_s.bb_rate,
                ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus,
-               ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.war
+               ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.bwar
         FROM pitcher_stats ps_s
         JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
         JOIN players p ON p.player_id = ps_s.player_id
         JOIN teams t ON t.team_id = ps.team_id
         LEFT JOIN player_salaries sal ON sal.player_id = ps_s.player_id AND sal.season = ps_s.season
+        JOIN ranked r ON r.player_id = ps_s.player_id
         WHERE ps_s.season=:season AND ps_s.fip IS NOT NULL
           AND (
-            (ps.position = 'SP' AND ps_s.ip >= :min_ip_sp) OR
-            (ps.position = 'RP' AND ps_s.ip >= :min_ip_rp)
+            (ps.position = 'SP' AND (ps_s.ip >= :min_ip_sp OR r.ip_rank <= :sp_slots)) OR
+            (ps.position = 'RP' AND (ps_s.ip >= :min_ip_rp OR r.ip_rank <= :rp_slots))
           )
     """)
 
@@ -176,7 +196,7 @@ def build_dashboard_data(season: int) -> dict:
                bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
                bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
                fs.oaa, fs.frv, fs.drs,
-               bs.hits, bs.games, bs.war, bs.wrc_plus
+               bs.hits, bs.games, bs.bwar, bs.wrc_plus
         FROM batter_stats bs
         JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
         JOIN teams t ON t.team_id = ps.team_id
@@ -190,7 +210,7 @@ def build_dashboard_data(season: int) -> dict:
                ps_s.hard_hit_rate_against, ps_s.barrel_rate_against, ps_s.xba_against,
                ps_s.avg_exit_velo_against, ps_s.chase_rate, ps_s.whiff_rate, ps_s.k_rate, ps_s.bb_rate,
                ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus,
-               ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.war
+               ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.bwar
         FROM pitcher_stats ps_s
         JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
         JOIN teams t ON t.team_id = ps.team_id
@@ -309,14 +329,38 @@ def build_dashboard_data(season: int) -> dict:
 
 
     print(f"[{season}] querying qualified batters/pitchers...")
-    batters = pd.read_sql(BATTER_Q, engine, params={"season": season, "min_pa": MIN_BATTER_PA})
-    pitchers = pd.read_sql(PITCHER_Q, engine, params={"season": season, "min_ip_sp": MIN_IP_SP, "min_ip_rp": MIN_IP_RP})
+    batters = pd.read_sql(BATTER_Q, engine, params={"season": season, "min_games": MIN_BATTER_GAMES})
+    pitchers = pd.read_sql(
+        PITCHER_Q, engine,
+        params={"season": season, "min_ip_sp": MIN_IP_SP, "min_ip_rp": MIN_IP_RP,
+                # Over-fetch candidates: some top-IP arms get dropped below for
+                # lacking any salary evidence, and the slot should pass to the
+                # next arm in line rather than leave a hole.
+                "sp_slots": TEAM_SP_SLOTS + 6, "rp_slots": TEAM_RP_SLOTS + 10},
+    )
     batters = _fill_verified_pre_arb(batters, "batters")
     pitchers = _fill_verified_pre_arb(pitchers, "pitchers")
+    # Apply the real team-slot cut now that unverifiable-salary arms are gone:
+    # keep anyone who clears the old IP bar, plus each team's top
+    # TEAM_SP_SLOTS SP / TEAM_RP_SLOTS RP by IP among those who remain.
+    _team_rank = pitchers.groupby(["team", "position"])["ip"].rank(ascending=False, method="first")
+    _keep = (
+        ((pitchers["position"] == "SP") & ((pitchers["ip"] >= MIN_IP_SP) | (_team_rank <= TEAM_SP_SLOTS)))
+        | ((pitchers["position"] == "RP") & ((pitchers["ip"] >= MIN_IP_RP) | (_team_rank <= TEAM_RP_SLOTS)))
+    )
+    pitchers = pitchers[_keep].reset_index(drop=True)
     batters = _add_k_minus_bb(batters)
     batters["position"] = batters["position"].map(lambda p: POS_MAP.get(p, p))
     batters["is_pre_arb"] = batters["contract_type"].apply(_is_pre_arb)
     pitchers["is_pre_arb"] = pitchers["contract_type"].apply(_is_pre_arb)
+
+    # Expected bWAR: fits the non-negative process-stat -> bWAR model on every
+    # completed season before this one and standardizes each current player
+    # against this season's qualifying population (see expected_war.py).
+    print(f"[{season}] fitting expected-bWAR model...")
+    expected_war_model, expected_war_z = expected_war.build(season)
+    for _g in ("batter", "pitcher"):
+        print(f"  {_g}: out-of-sample R^2 {expected_war_model[_g]['cvR2']} on {expected_war_model[_g]['nTrain']} player-seasons")
 
     print(f"[{season}] computing Marcel-style projections...")
     batter_marcel = compute_batter_projections(season)
@@ -351,8 +395,15 @@ def build_dashboard_data(season: int) -> dict:
     last30_batting, last30_pitching = fetch_last30()
     print(f"  last30: {len(last30_batting)} batters, {len(last30_pitching)} pitchers clear the playing-time floor")
 
+    # Percentile-bar baselines: full-time peers only (the old PA/IP bars), not the
+    # widened scoring pool, so a 31-game call-up doesn't shift what "average" means.
+    batters_q = batters[batters["pa"] >= MIN_BATTER_PA]
+    pitchers_q = pitchers[
+        ((pitchers["position"] == "SP") & (pitchers["ip"] >= MIN_IP_SP))
+        | ((pitchers["position"] == "RP") & (pitchers["ip"] >= MIN_IP_RP))
+    ]
     positionStats = {}
-    for pos, grp in batters.groupby("position"):
+    for pos, grp in batters_q.groupby("position"):
         positionStats[pos] = {}
         for stat in BATTER_STATS:
             vals = grp[stat].dropna()
@@ -360,7 +411,7 @@ def build_dashboard_data(season: int) -> dict:
                 {"mean": round(float(vals.mean()), 5), "std": round(float(vals.std()), 5)}
                 if len(vals) >= 2 else None
             )
-    for pos, grp in pitchers.groupby("position"):
+    for pos, grp in pitchers_q.groupby("position"):
         positionStats[pos] = {}
         for stat in PITCHER_STATS:
             vals = grp[stat].dropna()
@@ -514,6 +565,7 @@ def build_dashboard_data(season: int) -> dict:
 
     def to_record(r, is_batter, stat_keys, proj_map, proj_stat_keys, history_map, future_map, last30_map):
         proj = proj_map.get(int(r.player_id), {})
+        pred_inputs = expected_war.player_inputs(r, is_batter, expected_war_z)
         future = future_map.get(int(r.player_id), {})
         debut_date = getattr(r, "debut_date", None)
         # Real accrued MLB service time (years.days) -- the actual figure the
@@ -546,6 +598,12 @@ def build_dashboard_data(season: int) -> dict:
             "aav": round(float(r.aav)),
             "contractType": r.contract_type,
             "stats": {s: clean(getattr(r, s)) for s in stat_keys},
+            # Inputs for the expected-bWAR (Predicted Score) model: playing-time
+            # volume (PA/600 or IP/100) and each model stat standardized and
+            # oriented so higher = better. The frontend applies the model
+            # weights (live-adjustable sliders) to these.
+            "volume": pred_inputs["volume"],
+            "predZ": pred_inputs["predZ"],
             "age": clean(proj.get("age")),
             # Projected true-talent values, keyed the same as "stats" so any stat
             # can be compared 1:1 against its own projection (blend of Marcel
@@ -710,6 +768,7 @@ def build_dashboard_data(season: int) -> dict:
 
     out = {
         "allPlayers": all_players,
+        "expectedWarModel": expected_war_model,
         "positionStats": positionStats,
         "positionStatsHistory": positionStatsHistory,
         "historicalArbOutcomes": historical_arb_outcomes,

@@ -1,6 +1,6 @@
   // --- Baseball card ---
   const BATTER_STATS = [
-    { key: 'war', label: 'fWAR', type: 'velo1', higherBetter: true },
+    { key: 'bwar', label: 'bWAR', type: 'velo1', higherBetter: true },
     { key: 'ba', label: 'AVG', type: 'avg3', higherBetter: true },
     { key: 'obp', label: 'OBP', type: 'avg3', higherBetter: true },
     { key: 'slg', label: 'SLG', type: 'avg3', higherBetter: true },
@@ -13,7 +13,7 @@
     { key: 'sprint_speed', label: 'Sprint Spd', type: 'velo1', higherBetter: true },
   ];
   const PITCHER_STATS = [
-    { key: 'war', label: 'fWAR', type: 'velo1', higherBetter: true },
+    { key: 'bwar', label: 'bWAR', type: 'velo1', higherBetter: true },
     { key: 'era', label: 'ERA', type: 'rate2', higherBetter: false },
     { key: 'whip', label: 'WHIP', type: 'rate2', higherBetter: false },
     { key: 'fip', label: 'FIP', type: 'rate2', higherBetter: false },
@@ -333,6 +333,11 @@
     // this just avoids showing a second, confusingly-similar number under
     // a label that implies "pay them this right now."
     const pendingFA = isNearingFreeAgency(record);
+    const poolLabel = record.isBatter ? 'all hitters' : (record.position === 'SP' ? 'starters' : 'relievers');
+    const bwarNow = record.stats.bwar != null ? record.stats.bwar : 0;
+    const predNote = record.expectedWar != null
+      ? `<div class="card-value-note">Process stats say <strong>${record.expectedWar.toFixed(1)} bWAR</strong> was expected (${fmtSigned(record.warGap)} actual vs. expected) · Predicted Score <span class="${record.predictedScore >= 0 ? 'good' : 'bad'}">${fmtSigned(record.predictedScore)}</span></div>`
+      : '';
     let valueHtml = '';
     if (!record.isPreArb) {
       const recPayNote = (record.recommendedSalary != null && !pendingFA)
@@ -347,7 +352,8 @@
       valueHtml = `<div class="card-value-box">
         <div class="card-stat-label">Score</div>
         ${valueBar(record.score, 100)}
-        <div class="card-value-note">${record.compPct.toFixed(1)}th percentile performance, paid at the ${record.salPct.toFixed(1)}th percentile for ${record.position}</div>
+        <div class="card-value-note">Produced <strong>${bwarNow.toFixed(1)} bWAR</strong> — ${record.compPct.toFixed(1)}th percentile among ${poolLabel}, paid at the ${record.salPct.toFixed(1)}th percentile for ${record.position}</div>
+        ${predNote}
         ${recPayNote}
         ${arbNote}
       </div>`;
@@ -356,6 +362,7 @@
         <div class="card-stat-label">Projected Arbitration Value</div>
         <div class="card-projected">${fmtMoney(record.projectedSalary)}</div>
         <div class="card-value-note">Comped against real Arb-1-tier peers on traditional stats (AVG/HR/RBI/wins/saves/etc.) — the stats an arbitration panel actually looks at, not advanced metrics. Assumes the standard track (~40%); Super Two eligibility (a 4th, earlier arb year) can't be predicted before a player actually reaches the tracker.${accomplishmentsNote(record)}</div>
+        ${predNote}
       </div>`;
     }
 

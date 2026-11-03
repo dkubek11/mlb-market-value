@@ -109,11 +109,11 @@ def _assemble_template() -> str:
     return html + "</script>\n"
 
 
-def _render_dashboard(season: int, data: dict | None = None) -> str:
+def _render_dashboard(season: int, data: dict | None = None, refresh: bool = False) -> str:
     global _fonts_cache, _template_cache
-    if _template_cache is None:
+    if _template_cache is None or refresh:
         _template_cache = _assemble_template()
-    if _fonts_cache is None:
+    if _fonts_cache is None or refresh:
         _fonts_cache = {
             ph: (_DASHBOARD_DIR / fn).read_text(encoding="utf-8").strip()
             for ph, fn in _FONT_PLACEHOLDERS.items()
@@ -127,11 +127,11 @@ def _render_dashboard(season: int, data: dict | None = None) -> str:
     return html
 
 
-def _compute_render_save(season: int) -> str:
+def _compute_render_save(season: int, refresh: bool = False) -> str:
     """Compute the snapshot, persist it to disk, and return the rendered HTML."""
     data = build_dashboard_data(season)
     _save_snapshot(season, data)
-    html = _render_dashboard(season, data)
+    html = _render_dashboard(season, data, refresh=refresh)
     _dashboard_cache[season] = (time.time(), html)
     return html
 
@@ -202,7 +202,7 @@ def dashboard(
             _kick_off_refresh(season)
         return HTMLResponse(html)
 
-    html = _compute_render_save(season)
+    html = _compute_render_save(season, refresh=refresh)
     return HTMLResponse(html)
 
 
