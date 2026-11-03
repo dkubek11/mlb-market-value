@@ -3,8 +3,8 @@ database plus a couple of live scrapes (FanGraphs contract detail) -- no
 dependency on any earlier hand-captured JSON snapshot.
 
 The FastAPI `/` route imports build_dashboard_data() and inlines the result
-(plus the fonts) into dashboard_template.html at request time, so there is
-no offline HTML build step anymore.
+(plus the fonts) into the assembled dashboard (frontend/dashboard/parts/) at
+request time, so there is no offline HTML build step anymore.
 
 Usage: build_dashboard_data(2026)   (or `py build_dashboard.py [season]`
 as a maintenance tool to dump the snapshot to dashboard_data.json)
@@ -13,6 +13,8 @@ as a maintenance tool to dump the snapshot to dashboard_data.json)
 import datetime
 import json
 import sys
+import time
+from pathlib import Path
 
 # Backend imports resolve relative to this repo (works on any machine, unlike
 # the old machine-specific Windows path). Run with the backend venv active or
@@ -30,12 +32,46 @@ from app.pipeline.projections import (
 from app.pipeline.comp_projections import compute_batter_comp_projections, compute_pitcher_comp_projections
 from app.pipeline.fangraphs_salary import TEAM_SLUG_TO_ABBREVIATION, fetch_team_contracts
 from app.pipeline import mlbtr_arbitration
-from app.pipeline import mlb_stats_api
 from app.pipeline.ingest import _normalize_name
+from app.pipeline.trailing_stats import configure_cache_dir as _configure_trailing_cache, fetch_last30
 from headshots import get_headshot_data_uri
 from logos import get_team_logo_data_uri
 
 HERE = __import__("pathlib").Path(__file__).parent
+
+# Disk cache for the slow/network-dependent pieces of a snapshot build. A
+# rebuild still re-queries the DB every time, but only hits the network for
+# these at most once per TTL. Expired copies are kept and used as fallbacks
+# so a FanGraphs/MLB Stats API outage degrades freshness instead of breaking
+# the build.
+_CACHE_DIR = HERE / ".snapshot_cache"
+_CACHE_TTL_CONTRACTS = 24 * 3600
+
+_configure_trailing_cache(_CACHE_DIR)
+
+
+def _load_json_cache(path: Path, max_age_seconds: int) -> tuple[dict | None, str]:
+    """Return (data, state) where state is 'fresh', 'stale' (expired but a
+    usable fallback), or 'none'."""
+    try:
+        if path.exists():
+            age = time.time() - path.stat().st_mtime
+            with path.open(encoding="utf-8") as f:
+                data = json.load(f)
+            if data:
+                return data, ("fresh" if age <= max_age_seconds else "stale")
+    except Exception:
+        pass
+    return None, "none"
+
+
+def _write_json_cache(path: Path, data: dict) -> None:
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception as exc:  # noqa: BLE001 -- a cache write must never break the build
+        print(f"  (cache write failed: {exc!r})")
 
 
 def build_dashboard_data(season: int) -> dict:
@@ -218,7 +254,7 @@ def build_dashboard_data(season: int) -> dict:
     # of qualifying playing time (this season: pitchers with 60-90+ IP, batters
     # with 200+ PA) was silently falling out of scoring entirely. Most of these
     # genuinely are pre-arb (whose real salary barely matters for scoring anyway
-    # -- see the isPreArb path in dashboard_template.html, which ignores pay and
+    # -- see the isPreArb path in parts/js/scoring.js, which ignores pay and
     # scores on performance alone), but "missing a salary row" isn't proof of
     # that by itself, so this cross-checks two independent real signals before
     # assuming it: (1) MLBTR's own CURRENT-season arbitration tracker -- if a
@@ -309,35 +345,10 @@ def build_dashboard_data(season: int) -> dict:
     # compared against the same season-long projected true talent used
     # everywhere else, rather than reusing the season-to-date regression signal
     # (which the site already shows elsewhere, on player cards/lists, as a
-    # distinct "over/underperforming this season" concept).
-    MIN_LAST30_PA = 40
-    MIN_LAST30_OUTS = 24  # 8 IP
-
-
-    def _parse_trailing_stats(splits, stat_key, pt_key, min_pt):
-        out = {}
-        for s in splits:
-            stat = s.get("stat", {})
-            pt = stat.get(pt_key)
-            raw_val = stat.get(stat_key)
-            pid = s.get("player", {}).get("id")
-            if pid is None or pt is None or pt < min_pt or raw_val is None:
-                continue
-            try:
-                out[int(pid)] = float(raw_val)
-            except (TypeError, ValueError):
-                continue
-        return out
-
-
+    # distinct "over/underperforming this season" concept). Shared with the
+    # JSON API payload (app/pipeline/trailing_stats.py).
     print(f"[{season}] fetching trailing 30-day stats for Hot vs Cold...")
-    _last30_end = datetime.date.today()
-    last30_batting = _parse_trailing_stats(
-        mlb_stats_api.fetch_trailing_stats(_last30_end, 30, "hitting"), "avg", "plateAppearances", MIN_LAST30_PA
-    )
-    last30_pitching = _parse_trailing_stats(
-        mlb_stats_api.fetch_trailing_stats(_last30_end, 30, "pitching"), "era", "outs", MIN_LAST30_OUTS
-    )
+    last30_batting, last30_pitching = fetch_last30()
     print(f"  last30: {len(last30_batting)} batters, {len(last30_pitching)} pitchers clear the playing-time floor")
 
     positionStats = {}
@@ -620,40 +631,51 @@ def build_dashboard_data(season: int) -> dict:
         }
 
     print(f"[{season}] fetching current contract detail from FanGraphs RosterResource...")
-    contracts = {}
-    for slug in TEAM_SLUG_TO_ABBREVIATION:
-        try:
-            team_contracts = fetch_team_contracts(slug)
-        except Exception as exc:
-            print(f"  (FanGraphs contract detail unavailable for {slug}: {exc})")
-            continue
-        for contract in team_contracts:
-            summary = contract["contractSummary"]
-            pid = summary.get("MLBAMID")
-            if not pid:
+    _contracts_path = _CACHE_DIR / f"contracts_{datetime.date.today().strftime('%Y%m%d')}.json"
+    contracts, _contracts_state = _load_json_cache(_contracts_path, _CACHE_TTL_CONTRACTS)
+    if _contracts_state != "fresh":
+        if _contracts_state == "stale":
+            print("  (contract detail cache expired — refreshing; stale copy kept as fallback)")
+        fresh_contracts = {}
+        for slug in TEAM_SLUG_TO_ABBREVIATION:
+            try:
+                team_contracts = fetch_team_contracts(slug)
+            except Exception as exc:
+                print(f"  (FanGraphs contract detail unavailable for {slug}: {exc})")
                 continue
-            pid = int(pid)
-            years = sorted(
-                (
-                    {"season": y["Season"], "salary": y.get("Salary"), "aav": y.get("AAV"), "type": y.get("Type")}
-                    for y in contract["contractYears"]
-                ),
-                key=lambda y: y["season"],
-            )
-            entry = {
-                "contractType": summary.get("ContractType"),
-                "yearsTotal": summary.get("YearsTotal"),
-                "startSeason": summary.get("startSeason"),
-                "endSeasonAll": summary.get("endSeasonAll"),
-                "totalGuaranteed": summary.get("ContractTotal"),
-                "signingBonus": summary.get("SigningBonus"),
-                "years": years,
-            }
-            # a player can have multiple contract rows (extensions, multiple stints);
-            # keep whichever covers the most years of data
-            existing = contracts.get(pid)
-            if existing is None or len(entry["years"]) > len(existing["years"]):
-                contracts[pid] = entry
+            for contract in team_contracts:
+                summary = contract["contractSummary"]
+                pid = summary.get("MLBAMID")
+                if not pid:
+                    continue
+                pid = int(pid)
+                years = sorted(
+                    (
+                        {"season": y["Season"], "salary": y.get("Salary"), "aav": y.get("AAV"), "type": y.get("Type")}
+                        for y in contract["contractYears"]
+                    ),
+                    key=lambda y: y["season"],
+                )
+                entry = {
+                    "contractType": summary.get("ContractType"),
+                    "yearsTotal": summary.get("YearsTotal"),
+                    "startSeason": summary.get("startSeason"),
+                    "endSeasonAll": summary.get("endSeasonAll"),
+                    "totalGuaranteed": summary.get("ContractTotal"),
+                    "signingBonus": summary.get("SigningBonus"),
+                    "years": years,
+                }
+                # a player can have multiple contract rows (extensions, multiple stints);
+                # keep whichever covers the most years of data
+                existing = fresh_contracts.get(pid)
+                if existing is None or len(entry["years"]) > len(existing["years"]):
+                    fresh_contracts[pid] = entry
+        if fresh_contracts:
+            contracts = fresh_contracts
+            _write_json_cache(_contracts_path, fresh_contracts)
+        # else: keep the stale copy already loaded, or {} if we never had one
+    if contracts is None:
+        contracts = {}
 
     print(f"[{season}] querying real historical arbitration outcomes...")
     arb_hist_batters = pd.read_sql(ARB_HISTORY_BATTER_Q, engine)

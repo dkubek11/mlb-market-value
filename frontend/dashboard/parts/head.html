@@ -1,0 +1,714 @@
+<meta charset="utf-8" />
+<title>MLB Market Value — 2026</title>
+<style>
+  /* Rye (SIL OFL 1.1, Sorkin Type Co.) -- vintage ballpark-signage display face */
+  @font-face {
+    font-family: "Rye"; font-style: normal; font-weight: 400; font-display: swap;
+    src: url(data:font/woff2;base64,__RYE_FONT__) format("woff2");
+  }
+  /* Courier Prime (SIL OFL 1.1) -- typewriter face for stats, like an old box score */
+  @font-face {
+    font-family: "Courier Prime"; font-style: normal; font-weight: 400; font-display: swap;
+    src: url(data:font/woff2;base64,__COURIER_REGULAR_FONT__) format("woff2");
+  }
+  @font-face {
+    font-family: "Courier Prime"; font-style: normal; font-weight: 700; font-display: swap;
+    src: url(data:font/woff2;base64,__COURIER_BOLD_FONT__) format("woff2");
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1d170f; --surface: #292116; --surface-2: #362b1d;
+      --border: rgba(240,230,209,0.14); --ink: #f0e6d2; --ink-dim: #b7a586;
+      --accent: #dba53f; --accent-ink: #1d170f;
+      --good: #74ac78; --good-soft: rgba(116,172,120,0.18);
+    --bad: #db7259; --bad-soft: rgba(219,114,89,0.18);
+    --cool: #6d9fd8;
+      --cool: #6d9fd8;
+      --chip-bg: #362b1d; --chip-active-bg: #dba53f; --chip-active-ink: #1d170f;
+      --field-grass: #16241a; --field-infield: #20301f; --field-dirt: #7a5636; --field-line: rgba(240,230,209,0.55); --field-base: #f0e6d2;
+      --paper-noise-opacity: 0.05;
+    }
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f1e6ce; --surface: #faf3e2; --surface-2: #ecdcb8;
+      --border: rgba(42,32,21,0.16); --ink: #2a2015; --ink-dim: #6b5a3f;
+      --accent: #a8752a; --accent-ink: #faf3e2;
+      --good: #3d6b45; --good-soft: rgba(61,107,69,0.13);
+    --bad: #a33b2d; --bad-soft: rgba(163,59,45,0.13);
+    --cool: #4a7ac2;
+      --cool: #4a7ac2;
+      --chip-bg: #ecdcb8; --chip-active-bg: #a8752a; --chip-active-ink: #faf3e2;
+      --field-grass: #9dbd8f; --field-infield: #8bae7c; --field-dirt: #b8875a; --field-line: rgba(250,243,226,0.9); --field-base: #faf3e2;
+      --paper-noise-opacity: 0.05;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1d170f; --surface: #292116; --surface-2: #362b1d;
+    --border: rgba(240,230,209,0.14); --ink: #f0e6d2; --ink-dim: #b7a586;
+    --accent: #dba53f; --accent-ink: #1d170f;
+    --good: #74ac78; --good-soft: rgba(116,172,120,0.18);
+    --bad: #db7259; --bad-soft: rgba(219,114,89,0.18);
+    --chip-bg: #362b1d; --chip-active-bg: #dba53f; --chip-active-ink: #1d170f;
+    --field-grass: #16241a; --field-infield: #20301f; --field-dirt: #7a5636; --field-line: rgba(240,230,209,0.55); --field-base: #f0e6d2;
+    --paper-noise-opacity: 0.05;
+  }
+  :root[data-theme="light"] {
+    --bg: #f1e6ce; --surface: #faf3e2; --surface-2: #ecdcb8;
+    --border: rgba(42,32,21,0.16); --ink: #2a2015; --ink-dim: #6b5a3f;
+    --accent: #a8752a; --accent-ink: #faf3e2;
+    --good: #3d6b45; --good-soft: rgba(61,107,69,0.13);
+    --bad: #a33b2d; --bad-soft: rgba(163,59,45,0.13);
+    --chip-bg: #ecdcb8; --chip-active-bg: #a8752a; --chip-active-ink: #faf3e2;
+    --field-grass: #9dbd8f; --field-infield: #8bae7c; --field-dirt: #b8875a; --field-line: rgba(250,243,226,0.9); --field-base: #faf3e2;
+    --paper-noise-opacity: 0.05;
+  }
+
+  :root { --paper-noise: url(data:image/svg+xml;base64,__NOISE_TEXTURE__); }
+  * { box-sizing: border-box; }
+  body {
+    background-color: var(--bg); color: var(--ink);
+    background-image: var(--paper-noise); background-repeat: repeat; background-size: 180px 180px;
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    margin: 0; padding: 0;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 26px 28px 0; }
+
+  .eyebrow {
+    font-family: "Courier Prime", monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 8px;
+  }
+  .snapshot-note {
+    color: var(--ink-dim); font-size: 12.5px; margin: 0 0 24px;
+    font-family: "Courier Prime", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  }
+  .snapshot-note.stale { color: var(--bad); font-weight: 600; }
+
+  .method {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px;
+    padding: 14px 18px; font-size: 13px; line-height: 1.55; color: var(--ink-dim); margin-bottom: 28px;
+  }
+  .method strong { color: var(--ink); }
+  .method summary {
+    cursor: pointer; font-family: "Courier Prime", monospace; font-size: 12px; font-weight: 700;
+    letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink);
+  }
+  .method summary:hover { color: var(--accent); }
+
+  .page-foot { border-top: 1px solid var(--border); margin-top: 12px; padding: 14px 4px 44px; }
+  .page-foot .snapshot-note { margin: 0; font-size: 11px; line-height: 1.6; }
+
+  /* --- Transparent top navbar (v2) --- */
+  .topbar {
+    position: sticky; top: 0; z-index: 600;
+    display: flex; align-items: center; gap: 26px;
+    padding: 13px 28px;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand {
+    font-family: "Rye", Georgia, serif; font-size: 20px; letter-spacing: 0.02em; white-space: nowrap;
+    background: none; border: none; color: var(--ink); cursor: pointer; padding: 0;
+  }
+  .brand:hover { color: var(--accent); }
+  .topnav { display: flex; align-items: center; gap: 4px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 7px; background: none; border: none;
+    border-bottom: 2px solid transparent; color: var(--ink-dim); cursor: pointer;
+    font-family: "Courier Prime", monospace; font-size: 12.5px; font-weight: 700;
+    letter-spacing: 0.05em; text-transform: uppercase; padding: 9px 12px; white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+  }
+  .nav-item .caret { font-size: 9px; opacity: 0.7; }
+  .nav-item:hover { color: var(--ink); }
+  .nav-item.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .nav-drop { position: relative; }
+  .nav-drop-menu {
+    position: absolute; top: calc(100% + 8px); left: 0; min-width: 210px; z-index: 700;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px; display: none; box-shadow: 0 18px 40px rgba(0,0,0,0.28);
+  }
+  .nav-drop.open > .nav-drop-menu { display: block; }
+  .nav-drop-item {
+    display: block; width: 100%; text-align: left; background: none; border: none; border-radius: 5px;
+    color: var(--ink-dim); font-family: "Courier Prime", monospace; font-size: 12px; font-weight: 700;
+    letter-spacing: 0.03em; text-transform: uppercase; padding: 8px 10px; cursor: pointer;
+  }
+  .nav-drop-item:hover { background: var(--surface-2); color: var(--ink); }
+  .nav-drop-item .nav-drop-sub {
+    display: block; font-size: 10px; font-weight: 400; text-transform: none; letter-spacing: 0;
+    color: var(--ink-dim); opacity: 0.75; margin-top: 1px;
+  }
+  /* Nested League > Division > Team levels inside the Teams dropdown expand
+     inline (indented) so they never overflow the viewport. */
+  .nav-drop-item.nav-sub-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .nav-drop-item.nav-sub-toggle .caret { font-size: 9px; opacity: 0.6; }
+  .nav-drop-menu .nav-drop-menu {
+    position: static; box-shadow: none; border: none; border-left: 1px solid var(--border);
+    border-radius: 0; min-width: 0; padding: 2px 0 2px 8px; margin: 2px 0 2px 10px;
+  }
+  .nav-drop-menu .nav-drop-item.nav-team-link { padding-left: 12px; font-weight: 400; }
+
+  @media (max-width: 900px) {
+    .topbar { flex-wrap: wrap; gap: 8px 18px; padding: 12px 16px; }
+    .topnav { width: 100%; display: flex; overflow-x: auto; gap: 2px; }
+    .nav-drop-menu { position: static; box-shadow: none; min-width: 0; }
+    .wrap { padding: 18px 16px 0; }
+  }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+  .search {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+    color: var(--ink); font-size: 13.5px; padding: 8px 12px; width: 220px; font-family: Georgia, serif;
+  }
+  .search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    background: var(--chip-bg); color: var(--ink-dim); border: 1px solid var(--border);
+    border-radius: 4px; font-size: 11.5px; font-weight: 700; padding: 5px 11px;
+    cursor: pointer; font-family: "Courier Prime", monospace; letter-spacing: 0.02em;
+  }
+  .chip.active { background: var(--chip-active-bg); color: var(--chip-active-ink); border-color: transparent; }
+  .chip:focus-visible, .nav-item:focus-visible, .search:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .spacer { flex: 1; }
+  .count { font-size: 12px; color: var(--ink-dim); font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; }
+
+  .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; }
+  /* The full-width data views (Players, Rotation, Bullpen, Locks, etc.) are
+     wide, so they keep a readable minimum width and scroll horizontally
+     inside .table-scroll on narrow screens. This must NOT leak to compact
+     tables (mini-tables in the Explore cards, the card's history table),
+     which are meant to fit their container exactly. */
+  .table-scroll table { min-width: 720px; }
+  thead th {
+    text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-dim); padding: 10px 14px; border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  thead th.num, td.num { text-align: right; }
+  thead th.sorted { color: var(--ink); }
+  tbody td { padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 13.5px; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--surface-2); }
+  td.num { font-family: "Courier Prime", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+  .name-cell { display: flex; flex-direction: column; min-width: 0; }
+  .name-cell > span:first-child { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-weight: 600; }
+  .name-cell .team-tag { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .team-tag {
+    font-size: 11px; color: var(--ink-dim); font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .pos-pill {
+    display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px;
+    background: var(--surface-2); color: var(--ink-dim); font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .team-logo { vertical-align: -3px; margin-right: 5px; object-fit: contain; }
+
+  .bar-cell { display: flex; align-items: center; gap: 8px; }
+  .bar-track { position: relative; width: 84px; height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+  .bar-mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--border); }
+  .bar-fill { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+  .bar-fill.good { background: var(--good); }
+  .bar-fill.bad { background: var(--bad); }
+  .value-num { font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-variant-numeric: tabular-nums; font-weight: 600; width: 46px; text-align: right; }
+  .value-num.good { color: var(--good); }
+  .value-num.bad { color: var(--bad); }
+  .good { color: var(--good); }
+  .bad { color: var(--bad); }
+  .proj { color: var(--accent); }
+
+  .empty { padding: 40px; text-align: center; color: var(--ink-dim); font-size: 13.5px; }
+
+  .row-toggle { cursor: pointer; }
+  .chevron {
+    display: inline-block; width: 12px; margin-right: 6px; color: var(--ink-dim);
+    transition: transform 0.15s ease; font-size: 10px;
+  }
+  .chevron.open { transform: rotate(90deg); color: var(--accent); }
+  .detail-row td { background: var(--surface-2); padding: 0; border-bottom: 1px solid var(--border); }
+  .detail-inner { padding: 14px 18px 16px 34px; font-size: 13px; line-height: 1.7; }
+  .detail-line { color: var(--ink-dim); }
+  .detail-line b { color: var(--ink); font-weight: 600; }
+  .detail-line .mono { font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .detail-formula {
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-size: 14px; font-weight: 600;
+    margin-top: 8px; padding-top: 10px; border-top: 1px dashed var(--border);
+  }
+  .detail-formula .good { color: var(--good); }
+  .detail-formula .bad { color: var(--bad); }
+
+  .diamond-row td { background: var(--surface-2); padding: 0; border-bottom: 1px solid var(--border); }
+  .diamond-panel { padding: 20px 20px 24px; }
+  .diamond-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .diamond-head h3 { font-family: "Rye", Georgia, serif; font-weight: 400; font-size: 19px; margin: 0; letter-spacing: 0.01em; }
+  .diamond-head .diamond-sub { font-size: 12px; color: var(--ink-dim); }
+  .diamond-wrap { max-width: 620px; margin: 0 auto; }
+  .diamond-svg { width: 100%; height: auto; display: block; }
+  .pos-marker { cursor: default; }
+  .pos-marker[data-pid] { cursor: pointer; }
+  .pos-avatar-ring { transition: filter 0.15s; }
+  .pos-marker:hover .pos-avatar-ring { filter: brightness(1.12); }
+  .pos-initials { font-weight: 700; font-size: 14px; fill: var(--accent-ink); font-family: "Courier Prime", monospace; }
+  .pos-tag { font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; fill: var(--ink-dim); font-family: "Courier Prime", monospace; }
+  .pos-name { font-size: 11px; font-weight: 600; fill: var(--ink); font-family: Georgia, serif; }
+  .pos-score { font-size: 11px; font-weight: 700; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; }
+  .pos-score.good { fill: var(--good); }
+  .pos-score.bad { fill: var(--bad); }
+  .pos-score.proj { fill: var(--accent); }
+  .pos-score.empty { fill: var(--ink-dim); }
+  .diamond-legend { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-top: 10px; font-size: 11.5px; color: var(--ink-dim); }
+  .diamond-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .detail-formula .bad { color: var(--bad); }
+
+  #home-view { margin-top: 4px; }
+
+  /* --- Dual league carousels (v2, above the fold) --- */
+  .carousel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 32px; }
+  .carousel {
+    position: relative; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.35); color: #e6edf7;
+  }
+  .carousel.nl { background: linear-gradient(160deg, #0c192c, #0a1424, #080e18); border: 1px solid #1e3a8a; }
+  .carousel.al { background: linear-gradient(160deg, #250d14, #1c0a10, #120508); border: 1px solid #881337; }
+  .carousel-watermark {
+    position: absolute; inset: 0; margin: auto; width: 420px; height: 420px;
+    opacity: 0.12; pointer-events: none;
+  }
+  .carousel-watermark svg { width: 100%; height: 100%; }
+  .carousel-inner { position: relative; z-index: 1; padding: 18px 20px 8px; }
+  .carousel-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .carousel-title { font-family: "Rye", Georgia, serif; font-size: 24px; font-weight: 400; letter-spacing: 0.01em; }
+  .carousel-badge {
+    font-family: "Courier Prime", monospace; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em;
+    padding: 4px 10px; border-radius: 999px; border: 1px solid;
+  }
+  .carousel-badge.under { background: #052e16; color: #34d399; border-color: #065f46; }
+  .carousel-badge.over { background: #431407; color: #fb923c; border-color: #7c2d12; }
+  .carousel-spacer { flex: 1; }
+  .carousel-arrow {
+    width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.08); color: #fff; font-size: 16px; line-height: 1;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  .carousel-arrow:hover { background: rgba(255,255,255,0.18); }
+  .carousel-arrow:disabled { opacity: 0.35; cursor: default; }
+  .carousel-slides { min-height: 300px; }
+  .carousel-slide { display: none; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .carousel-slide.active { display: grid; }
+  .carousel-half-head {
+    font-family: "Courier Prime", monospace; font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em;
+    text-transform: uppercase; color: rgba(230,237,247,0.62); margin-bottom: 8px;
+  }
+  .carousel-half-head .count { color: rgba(230,237,247,0.42); }
+  .carousel-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;
+    padding: 7px 10px; margin-bottom: 6px; color: inherit; font-family: inherit; font-size: 12.5px;
+    text-align: left; cursor: pointer;
+  }
+  .carousel-row:hover { background: rgba(255,255,255,0.13); }
+  .carousel-row-name { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-weight: 600; color: #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .carousel-row-tag { color: rgba(226,232,240,0.62); font-size: 10.5px; font-family: "Courier Prime", monospace; }
+  .carousel-row-val {
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-weight: 700;
+    font-size: 12px; white-space: nowrap; flex-shrink: 0;
+  }
+  .carousel-row-val.good { color: #34d399; }
+  .carousel-row-val.bad { color: #fb923c; }
+  .carousel .empty { padding: 18px 0; text-align: left; font-size: 12px; color: rgba(226,232,240,0.55); }
+  .carousel-dots { display: flex; justify-content: center; gap: 6px; padding: 10px 0 14px; }
+  .carousel-showmore { display: flex; justify-content: center; padding-bottom: 14px; }
+  .carousel-showmore .show-more {
+    border-color: rgba(255,255,255,0.25); color: #fff; background: rgba(255,255,255,0.08);
+  }
+  .carousel-showmore .show-more:hover { background: rgba(255,255,255,0.18); }
+  .carousel-dot {
+    width: 8px; height: 8px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.4);
+    background: transparent; cursor: pointer; padding: 0;
+  }
+  .carousel-dot.active { background: #fff; border-color: #fff; }
+
+  /* --- Explore section (v2) --- */
+  .explore-heading {
+    font-family: "Rye", Georgia, serif; font-weight: 400; font-size: 30px;
+    letter-spacing: 0.01em; margin: 6px 0 18px;
+  }
+  .explore-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px; }
+  .explore-card { padding: 16px 18px; min-width: 0; }
+  .explore-card.wide { grid-column: 1 / -1; }
+  .explore-card .preview-head, .locks-card .preview-head { margin-bottom: 4px; }
+  .explore-card .preview-head h3, .locks-card .preview-head h3 {
+    font-family: "Rye", Georgia, serif; font-weight: 400; font-size: 18px; letter-spacing: 0.01em;
+  }
+  .explore-card .preview-sub, .locks-card .preview-sub { font-size: 12px; color: var(--ink-dim); }
+  .hot-cold-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 28px; }
+  .hot-cold-cols .pick-row { padding: 8px 0; font-size: 13px; }
+  .explore-subhead {
+    font-family: "Courier Prime", monospace; font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--ink-dim); margin: 8px 0 2px;
+  }
+  .explore-subhead.hot { color: var(--bad); }
+  .explore-subhead.cold { color: var(--cool); }
+  .pick-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+    background: none; border: none; border-bottom: 1px solid var(--border); padding: 6px 0;
+    font-family: inherit; font-size: 12.5px; color: inherit; text-align: left; cursor: pointer;
+  }
+  .pick-row:last-of-type { border-bottom: none; }
+  .pick-row:hover .preview-row-name { color: var(--accent); }
+  .pick-row .preview-row-name { min-width: 0; }
+  .tier-block { margin-bottom: 10px; }
+  .tier-block:last-child { margin-bottom: 0; }
+  .tier-head {
+    font-family: "Courier Prime", monospace; font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--ink-dim); margin-bottom: 4px;
+  }
+
+  /* League > Division > Team cascade dropdown (Teams tab filter). */
+  .cascade-filter { position: relative; }
+  .cascade-trigger {
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--ink);
+    font-family: inherit; font-size: 12.5px; font-weight: 700; padding: 7px 12px;
+    border-radius: 6px; cursor: pointer; white-space: nowrap;
+  }
+  .cascade-trigger:hover { border-color: var(--accent); }
+  .cascade-trigger .caret { font-size: 9px; opacity: 0.7; margin-left: 6px; }
+  .cascade-menu {
+    position: absolute; top: calc(100% + 4px); left: 0; z-index: 30;
+    min-width: 230px; background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.25);
+    padding: 4px; display: flex; flex-direction: column; gap: 1px;
+  }
+  .cascade-block { display: flex; flex-direction: column; }
+  .cascade-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    width: 100%; background: none; border: none; text-align: left; cursor: pointer;
+    font-family: inherit; font-size: 12.5px; color: var(--ink);
+    padding: 7px 10px; border-radius: 5px; white-space: nowrap;
+  }
+  .cascade-row:hover { background: var(--surface); color: var(--accent); }
+  .cascade-row .caret { font-size: 9px; opacity: 0.6; }
+  .cascade-row .team-logo { margin-right: 6px; }
+  .cascade-sub {
+    margin-left: 12px; border-left: 1px solid var(--border); padding-left: 6px;
+    display: flex; flex-direction: column; gap: 1px;
+  }
+
+  .mini-table { width: 100%; border-collapse: collapse; font-size: 11.5px; table-layout: fixed; }
+  .mini-table th {
+    font-family: "Courier Prime", monospace; font-size: 9px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--ink-dim); text-align: left; padding: 3px 5px;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  .mini-table th.num, .mini-table td.num { text-align: right; width: 52px; }
+  .mini-table td {
+    padding: 4px 5px; border-bottom: 1px solid var(--border); white-space: nowrap;
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-variant-numeric: tabular-nums;
+  }
+  .mini-table td:first-child { white-space: normal; }
+  .mini-table td.name { font-family: Georgia, serif; font-weight: 600; overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
+  .mini-table tbody tr { cursor: pointer; }
+  .mini-table tbody tr:hover td { color: var(--accent); }
+  .mini-table tbody tr:last-child td { border-bottom: none; }
+  .rotation-team-row { cursor: pointer; }
+  .rotation-players { margin: 0 0 6px 14px; width: calc(100% - 14px); }
+  .explore-card .empty, .locks-card .empty { padding: 10px 0 14px; font-size: 12.5px; text-align: left; }
+
+  /* Locks card sits in the Explore grid: show all rows with a vertical
+     scrollbar (sticky header), and use fixed layout + tighter cell padding so
+     the columns fit the container width -- no horizontal scrolling. The card
+     is a flex column and the table-scroll grows (flex: 1) to fill the card's
+     full height, so there's no dead space below the table; max-height caps
+     the growth (viewport-relative) so the scroll area stays bounded. No
+     border -- the card border is enough. */
+  .locks-card { padding: 16px 18px; min-width: 0; display: flex; flex-direction: column; }
+  #explore-rotations { margin-bottom: 32px; }
+  .locks-card .table-scroll {
+    margin-top: 8px; flex: 1 1 auto; min-height: 0; overflow-x: hidden; max-height: 80vh;
+    border: none;
+  }
+  .locks-card .table-scroll thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); }
+  .table-scroll .locks-table { min-width: 0; table-layout: fixed; }
+  .locks-table th, .locks-table td { padding: 7px 8px; }
+  .locks-table th { white-space: normal; }
+  .locks-table th.num, .locks-table td.num { width: 84px; }
+  .locks-table td:first-child { white-space: normal; }
+  .preview-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px 8px; }
+  .preview-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .preview-head h3 { font-size: 13px; font-weight: 800; margin: 0; }
+  .preview-sub { font-size: 11px; font-weight: 500; color: var(--ink-dim); text-transform: none; letter-spacing: 0; display: block; margin-top: 1px; }
+  .preview-link {
+    background: none; border: none; color: var(--accent); font-size: 11.5px; font-weight: 700;
+    cursor: pointer; font-family: inherit; white-space: nowrap; padding: 0;
+  }
+  .card-actions { margin-top: 10px; display: flex; justify-content: center; }
+  .show-more {
+    background: none; border: 1px solid var(--border); color: var(--accent);
+    font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit;
+    border-radius: 6px; padding: 7px 14px; white-space: nowrap;
+  }
+  .show-more:hover { background: var(--surface-2); border-color: var(--accent); }
+  .preview-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px;
+  }
+  .preview-row:last-child { border-bottom: none; }
+  .preview-row-name { color: var(--ink); font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .preview-row-tag { color: var(--ink-dim); font-size: 10.5px; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; }
+  .preview-row-val {
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-weight: 700; font-size: 12px;
+    white-space: nowrap; flex-shrink: 0;
+  }
+
+  /* --- Baseball card modal --- */
+  .card-overlay {
+    position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+    padding: 28px 16px;
+  }
+  .card-overlay-bg { position: absolute; inset: 0; background: rgba(4,8,6,0.68); backdrop-filter: blur(3px); }
+  .baseball-card {
+    position: relative; width: 380px; max-width: 100%; max-height: calc(100vh - 56px); overflow-y: auto;
+    background: var(--surface); border-radius: 10px; box-shadow: 0 30px 70px rgba(0,0,0,0.55);
+    border: 1px solid var(--border); animation: card-pop 0.22s cubic-bezier(.2,.9,.3,1.1);
+  }
+  @keyframes card-pop { from { opacity: 0; transform: scale(0.94) translateY(10px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .baseball-card { animation: none; } }
+
+  .card-close {
+    position: absolute; top: 12px; right: 12px; z-index: 5; width: 30px; height: 30px; border-radius: 50%;
+    background: rgba(0,0,0,0.32); color: #fff; border: none; cursor: pointer; font-size: 14px;
+    display: flex; align-items: center; justify-content: center; transition: background 0.15s;
+  }
+  .card-close:hover { background: rgba(0,0,0,0.55); }
+
+  .card-head {
+    position: relative; padding: 20px 20px 50px;
+    background: linear-gradient(135deg, var(--team-1), var(--team-2));
+  }
+  .card-head-top {
+    display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 800;
+    letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.9); padding-right: 30px;
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .card-avatar-wrap { position: absolute; left: 50%; bottom: -38px; transform: translateX(-50%); }
+  .card-avatar {
+    width: 82px; height: 82px; border-radius: 50%; background: var(--surface);
+    border: 4px solid var(--surface); display: flex; align-items: center; justify-content: center;
+    font-size: 26px; font-weight: 800; color: var(--team-1); box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    overflow: hidden;
+  }
+  .card-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+  .card-grade-badge {
+    position: absolute; bottom: -3px; right: -8px; background: var(--accent); color: var(--accent-ink);
+    font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 9px; border: 2px solid var(--surface);
+  }
+
+  .card-body { padding: 46px 22px 24px; text-align: center; }
+  .card-name { font-family: "Rye", Georgia, serif; font-size: 24px; font-weight: 400; margin: 0 0 4px; letter-spacing: 0.01em; text-wrap: balance; }
+  .card-subline { font-size: 12.5px; color: var(--ink-dim); margin-bottom: 8px; }
+  .regression-line {
+    font-size: 11.5px; font-weight: 600; margin: -2px 0 12px;
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .regression-line.good { color: var(--good); }
+  .regression-line.bad { color: var(--bad); }
+  .regression-arrow { font-size: 12px; }
+  .regression-tag {
+    display: inline-block; font-size: 11px; margin-left: 4px; font-weight: 700;
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .regression-tag.good { color: var(--good); }
+  .regression-tag.bad { color: var(--bad); }
+  .card-contract-line {
+    display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px;
+    font-size: 11.5px; font-weight: 600; color: var(--ink-dim);
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .card-contract-box { text-align: left; margin-bottom: 16px; }
+  .card-contract-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .card-contract-type {
+    font-size: 10.5px; font-weight: 700; color: var(--ink-dim); background: var(--surface-2);
+    padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  }
+  .card-contract-total {
+    font-size: 11px; color: var(--ink-dim); font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .card-contract-years {
+    max-height: 132px; overflow-y: auto; border: 1px solid var(--border); border-radius: 7px;
+  }
+  .contract-year-row {
+    display: flex; align-items: center; justify-content: space-between; padding: 5px 12px;
+    font-size: 12px; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; border-bottom: 1px solid var(--border);
+  }
+  .contract-year-row:last-child { border-bottom: none; }
+  .contract-year-row .contract-year { color: var(--ink-dim); }
+  .contract-year-row.current { background: var(--good-soft); font-weight: 700; }
+  .contract-year-row.current .contract-year, .contract-year-row.current .contract-year-salary { color: var(--good); }
+
+  .card-value-box {
+    background: var(--surface-2); border-radius: 8px; padding: 12px 14px; margin-bottom: 18px; text-align: left;
+  }
+  .card-value-box .bar-cell { margin-top: 6px; }
+  .card-value-box .bar-track { flex: 1; width: auto; }
+  .card-projected {
+    font-size: 22px; font-weight: 800; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+    color: var(--accent); margin-top: 4px;
+  }
+  .card-value-note { font-size: 11px; color: var(--ink-dim); margin-top: 6px; line-height: 1.5; }
+
+  .card-section-title {
+    font-family: "Courier Prime", monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-dim); text-align: left; margin: 4px 0 8px;
+  }
+
+  .history-table-wrap {
+    overflow-x: auto; border: 1px solid var(--border); border-radius: 7px; margin-bottom: 6px;
+  }
+  .history-table {
+    width: 100%; border-collapse: collapse; font-size: 11px;
+    font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; white-space: nowrap;
+  }
+  .history-table th, .history-table td { padding: 5px 8px; text-align: left; }
+  .history-table th {
+    color: var(--ink-dim); font-weight: 700; text-transform: uppercase; font-size: 9px; letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+  }
+  .history-table td.num, .history-table th.num { text-align: right; }
+  .history-table tbody tr:not(:last-child) td { border-bottom: 1px solid var(--border); }
+  .history-note { font-size: 10px; color: var(--ink-dim); line-height: 1.5; text-align: left; margin-bottom: 4px; }
+  .card-stat-label {
+    font-family: "Courier Prime", monospace; font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-dim);
+  }
+
+  /* --- Percentile bars (Statcast-style: blue=poor, gray=average, red=great) --- */
+  .pctl-legend {
+    display: flex; justify-content: space-between; align-items: center; margin: 2px 0 10px;
+    font-family: "Courier Prime", monospace; font-size: 9px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .pctl-legend span:nth-child(1) { color: #5b84c4; }
+  .pctl-legend span:nth-child(2) { color: var(--ink-dim); }
+  .pctl-legend span:nth-child(3) { color: #c94a3d; }
+  .pctl-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; text-align: left; }
+  .pctl-label {
+    flex: 0 0 76px; font-family: "Courier Prime", monospace; font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink-dim); line-height: 1.2;
+  }
+  .pctl-track {
+    position: relative; flex: 1 1 auto; height: 8px; border-radius: 4px; background: var(--surface-2);
+    border: 1px solid var(--border);
+  }
+  .pctl-fill { position: absolute; top: -1px; left: -1px; bottom: -1px; border-radius: 4px; opacity: 0.55; }
+  .pctl-badge {
+    position: absolute; top: 50%; width: 21px; height: 21px; border-radius: 50%;
+    transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;
+    font-family: "Courier Prime", monospace; font-size: 9.5px; font-weight: 700; color: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  .pctl-value {
+    flex: 0 0 42px; text-align: right; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 11px; font-weight: 700; color: var(--ink);
+  }
+  .pctl-section-title { margin-top: 14px; }
+  .pctl-section-title:first-child { margin-top: 0; }
+
+  /* --- Custom weighted score --- */
+  .custom-intro { max-width: 720px; margin-bottom: 22px; }
+  .custom-intro h2 { font-family: "Rye", Georgia, serif; font-weight: 400; font-size: 24px; letter-spacing: 0.01em; margin: 0 0 8px; }
+  .custom-intro p { color: var(--ink-dim); font-size: 14px; line-height: 1.6; margin: 0; }
+  .custom-intro strong { color: var(--ink); }
+
+  .weight-panel {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 28px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 18px 22px; margin-bottom: 10px;
+  }
+  .weight-row { display: flex; align-items: center; gap: 12px; padding: 7px 0; }
+  .weight-label {
+    width: 128px; flex-shrink: 0; font-family: "Courier Prime", monospace; font-size: 12px;
+    font-weight: 700; color: var(--ink); text-transform: uppercase; letter-spacing: 0.02em;
+  }
+  .weight-label .direction { color: var(--ink-dim); font-weight: 400; text-transform: none; font-size: 10px; display: block; }
+  .weight-row input[type="range"] {
+    flex: 1; accent-color: var(--accent); height: 4px; cursor: pointer;
+  }
+  .weight-value {
+    width: 34px; flex-shrink: 0; text-align: right; font-family: "Courier Prime", monospace;
+    font-size: 13px; font-weight: 700; color: var(--accent);
+  }
+  .weight-actions { margin: 0 0 20px; }
+  .weight-group { margin-bottom: 26px; }
+  .weight-group-title { font-family: "Rye", Georgia, serif; font-weight: 400; font-size: 17px; letter-spacing: 0.01em; margin: 0 0 10px; }
+
+  @media (max-width: 720px) {
+    .weight-panel { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 900px) {
+    .carousel-grid, .explore-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px) {
+    .carousel-slide { grid-template-columns: 1fr; }
+    .hot-cold-cols { grid-template-columns: 1fr; }
+    .search { width: 100%; }
+  }
+
+  /* --- Motion: view/modal transitions, entrance, counters, bars, accordion,
+     theme crossfade. All disabled under prefers-reduced-motion below. --- */
+  @keyframes view-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .view-anim { animation: view-fade-in 0.22s ease; }
+
+  .card-overlay { animation: overlay-fade 0.18s ease; transition: opacity 0.16s ease; }
+  .card-overlay.closing { opacity: 0; pointer-events: none; }
+  @keyframes overlay-fade { from { opacity: 0; } to { opacity: 1; } }
+
+  .preview-card { animation: rise-in 0.45s ease both; }
+  @keyframes rise-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .preview-card:nth-child(1) { animation-delay: 0.03s; }
+  .preview-card:nth-child(2) { animation-delay: 0.08s; }
+  .preview-card:nth-child(3) { animation-delay: 0.13s; }
+  .preview-card:nth-child(4) { animation-delay: 0.18s; }
+
+  .bar-fill.anim { transition: width 0.45s cubic-bezier(.2,.9,.3,1.15); }
+
+  .pos-marker { animation: pop-in 0.32s cubic-bezier(.2,.9,.3,1.15) both; transform-box: fill-box; transform-origin: center; }
+  @keyframes pop-in { from { opacity: 0; transform: scale(0.55); } to { opacity: 1; transform: none; } }
+  .field-pulse { animation: field-pulse 7s ease-in-out infinite; }
+  @keyframes field-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.88; } }
+
+  .card-avatar img { opacity: 0; transition: opacity 0.25s ease; }
+  .card-avatar img.img-loaded { opacity: 1; }
+  .card-avatar { position: relative; }
+  .card-avatar:has(img:not(.img-loaded))::after {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.14) 50%, transparent 70%);
+    background-size: 220% 100%;
+    animation: shimmer-sweep 1.3s ease-in-out infinite;
+  }
+  @keyframes shimmer-sweep { from { background-position: 130% 0; } to { background-position: -130% 0; } }
+
+  .detail-accordion, .diamond-accordion { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s ease; }
+  .detail-accordion.expanded, .diamond-accordion.expanded { grid-template-rows: 1fr; }
+  .detail-accordion-inner, .diamond-accordion-inner { overflow: hidden; min-height: 0; }
+
+  html.theme-anim, html.theme-anim body,
+  html.theme-anim .topbar, html.theme-anim .preview-card, html.theme-anim .table-scroll, html.theme-anim .search,
+  html.theme-anim .weight-panel, html.theme-anim .method, html.theme-anim .detail-row td,
+  html.theme-anim .diamond-row td, html.theme-anim .baseball-card {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .view-anim, .preview-card,
+    .bar-fill.anim, .pos-marker, .field-pulse, .card-overlay,
+    .detail-accordion, .diamond-accordion, .card-avatar::after, .card-avatar img {
+      animation: none !important; transition: none !important;
+    }
+  }
+</style>
+

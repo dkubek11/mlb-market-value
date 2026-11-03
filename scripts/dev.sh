@@ -8,9 +8,9 @@
 #   1. Migrations (alembic upgrade head, idempotent)
 #   2. Backend: uvicorn app.main:app --reload -> http://localhost:8000  (API + docs + dashboard)
 #
-# The dashboard is rendered live by the API: the / route inlines the current
-# data snapshot and fonts into frontend/dashboard/dashboard_template.html on
-# request, so there is no offline build step.
+# The dashboard is rendered live by the API: the / route assembles
+# frontend/dashboard/parts/ into one document and inlines the current data
+# snapshot and fonts on request, so there is no offline build step.
 #
 # Database: SQLite by default (backend/mlb_market_value.db). Override with DATABASE_URL.
 # Requires: backend/.venv (python venv).

@@ -1,6 +1,8 @@
 import datetime
 import json
+import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -15,14 +17,29 @@ app = FastAPI(title="MLB Market Value API")
 
 # The dashboard is served live at /: build_dashboard_data() computes the full
 # snapshot from the DB (data inlined via __DATA_JSON__) and the route inlines
-# the fonts into dashboard_template.html at request time. There is no offline
-# HTML build step and no generated dashboard_final.html anymore.
+# the fonts into the assembled template at request time. The template source
+# is split into frontend/dashboard/parts/ (head/topbar/views HTML plus one JS
+# module per feature) and assembled into a single document here, so there is
+# no offline HTML build step, no bundler, and no generated file in the repo.
 _DASHBOARD_DIR = (
     Path(__file__).resolve().parent.parent.parent
     / "frontend"
     / "dashboard"
 )
-_DASHBOARD_TEMPLATE = _DASHBOARD_DIR / "dashboard_template.html"
+_DASHBOARD_PARTS_DIR = _DASHBOARD_DIR / "parts"
+# Concatenated into one <script> in this order -- all modules share a single
+# script scope, exactly like the original single-file template they came from.
+_DASHBOARD_JS_PARTS = (
+    "core.js",
+    "player-card.js",
+    "home.js",
+    "tables.js",
+    "teams.js",
+    "scoring.js",
+    "weights.js",
+    "custom.js",
+    "nav.js",
+)
 
 if str(_DASHBOARD_DIR) not in sys.path:
     sys.path.insert(0, str(_DASHBOARD_DIR))
@@ -36,28 +53,105 @@ _FONT_PLACEHOLDERS = {
 }
 
 # A snapshot build runs DB queries, projections, and best-effort live scrapes,
-# so the rendered page is cached per season. The cache expires after a short
-# TTL and can be bypassed with ?refresh=1.
-_DASHBOARD_CACHE_TTL_SECONDS = 30 * 60
+# so results are cached in two layers:
+#   1. In-memory rendered HTML per season (fast path within the process).
+#   2. The raw snapshot dict persisted to .snapshot_cache/dashboard_{season}.json
+#      (survives restarts). On expiry the stale page is served immediately and
+#      a fresh snapshot is computed in the background (stale-while-revalidate),
+#      so a page load never blocks on a ~20s rebuild. ?refresh=1 forces a
+#      synchronous rebuild. TTL defaults to 30 min; override with
+#      DASHBOARD_CACHE_TTL_MINUTES.
+_DASHBOARD_CACHE_TTL_SECONDS = int(os.environ.get("DASHBOARD_CACHE_TTL_MINUTES", "30")) * 60
+_SNAPSHOT_CACHE_DIR = _DASHBOARD_DIR / ".snapshot_cache"
 _dashboard_cache: dict[int, tuple[float, str]] = {}
 _fonts_cache: dict[str, str] | None = None
 _template_cache: str | None = None
+_refresh_flags: dict[int, bool] = {}
+_state_lock = threading.Lock()
 
 
-def _render_dashboard(season: int) -> str:
+def _snapshot_path(season: int) -> Path:
+    _SNAPSHOT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return _SNAPSHOT_CACHE_DIR / f"dashboard_{season}.json"
+
+
+def _load_snapshot(season: int) -> tuple[dict | None, float]:
+    try:
+        p = _snapshot_path(season)
+        if not p.exists():
+            return None, 0.0
+        with p.open(encoding="utf-8") as f:
+            return json.load(f), p.stat().st_mtime
+    except Exception as exc:  # noqa: BLE001 -- cache read failure must not break the page
+        print(f"WARNING: could not read dashboard snapshot cache ({exc!r})")
+        return None, 0.0
+
+
+def _save_snapshot(season: int, data: dict) -> None:
+    try:
+        p = _snapshot_path(season)
+        with p.open("w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception as exc:  # noqa: BLE001
+        print(f"WARNING: could not write dashboard snapshot cache ({exc!r})")
+
+
+def _assemble_template() -> str:
+    """Join parts/*.html and parts/js/*.js (in order) into the full dashboard
+    document. The JS modules are wrapped in a single <script> tag so they keep
+    the one shared scope the original single-file template had."""
+    def read(rel: str) -> str:
+        return (_DASHBOARD_PARTS_DIR / rel).read_text(encoding="utf-8")
+
+    html = read("head.html") + read("topbar.html") + read("views.html") + "<script>\n"
+    for name in _DASHBOARD_JS_PARTS:
+        html += read(f"js/{name}")
+    return html + "</script>\n"
+
+
+def _render_dashboard(season: int, data: dict | None = None) -> str:
     global _fonts_cache, _template_cache
     if _template_cache is None:
-        _template_cache = _DASHBOARD_TEMPLATE.read_text(encoding="utf-8")
+        _template_cache = _assemble_template()
     if _fonts_cache is None:
         _fonts_cache = {
             ph: (_DASHBOARD_DIR / fn).read_text(encoding="utf-8").strip()
             for ph, fn in _FONT_PLACEHOLDERS.items()
         }
+    if data is None:
+        data = build_dashboard_data(season)
     html = _template_cache
-    html = html.replace("__DATA_JSON__", json.dumps(build_dashboard_data(season)))
+    html = html.replace("__DATA_JSON__", json.dumps(data))
     for ph, value in _fonts_cache.items():
         html = html.replace(ph, value)
     return html
+
+
+def _compute_render_save(season: int) -> str:
+    """Compute the snapshot, persist it to disk, and return the rendered HTML."""
+    data = build_dashboard_data(season)
+    _save_snapshot(season, data)
+    html = _render_dashboard(season, data)
+    _dashboard_cache[season] = (time.time(), html)
+    return html
+
+
+def _kick_off_refresh(season: int) -> None:
+    with _state_lock:
+        if _refresh_flags.get(season):
+            return
+        _refresh_flags[season] = True
+    threading.Thread(target=_refresh_worker, args=(season,), daemon=True).start()
+
+
+def _refresh_worker(season: int) -> None:
+    try:
+        _compute_render_save(season)
+    except Exception as exc:  # noqa: BLE001 -- a background refresh must never kill the server
+        print(f"WARNING: background dashboard refresh for {season} failed ({exc!r})")
+    finally:
+        with _state_lock:
+            _refresh_flags[season] = False
 
 # position_enum stores "FIRST_BASE"/"SECOND_BASE"/"THIRD_BASE" as the literal
 # DB value (a bare "1B" isn't a valid Postgres enum label), but every other
@@ -90,14 +184,25 @@ def dashboard(
     season: int = Query(default=datetime.date.today().year),
     refresh: bool = Query(default=False, description="Force a fresh snapshot instead of serving the cached page"),
 ):
-    """Serve the dashboard at the root: render dashboard_template.html with
-    the season's data and fonts inlined at request time. Rendered pages are
-    cached per season (30-minute TTL); pass ?refresh=1 to force a rebuild."""
+    """Serve the dashboard at the root: render the assembled dashboard (parts/)
+    with the season's data and fonts inlined. Snapshots are cached in memory and on disk
+    (.snapshot_cache/dashboard_{season}.json), so loads are instant and survive
+    restarts; on TTL expiry the stale page is served while a fresh snapshot is
+    computed in the background. ?refresh=1 forces a synchronous rebuild."""
+    now = time.time()
     cached = _dashboard_cache.get(season)
-    if cached and not refresh and (time.time() - cached[0]) < _DASHBOARD_CACHE_TTL_SECONDS:
+    if cached and not refresh and (now - cached[0]) < _DASHBOARD_CACHE_TTL_SECONDS:
         return HTMLResponse(cached[1])
-    html = _render_dashboard(season)
-    _dashboard_cache[season] = (time.time(), html)
+
+    snapshot, mtime = _load_snapshot(season)
+    if snapshot is not None and not refresh:
+        html = _render_dashboard(season, snapshot)
+        _dashboard_cache[season] = (now, html)
+        if (now - mtime) >= _DASHBOARD_CACHE_TTL_SECONDS:
+            _kick_off_refresh(season)
+        return HTMLResponse(html)
+
+    html = _compute_render_save(season)
     return HTMLResponse(html)
 
 

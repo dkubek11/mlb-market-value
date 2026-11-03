@@ -9,11 +9,11 @@
 # After up:  http://localhost:8000/        -> dashboard
 #            http://localhost:8000/docs    -> API docs
 #
-# The dashboard is served live by the API: the / route renders
-# dashboard_template.html with the current DB snapshot + fonts inlined at
-# request time (build_dashboard.py's build_dashboard_data()). The bind mount
-# below makes frontend/dashboard on the host the live source inside the
-# container, so template/asset edits need no image rebuild.
+# The dashboard is served live by the API: the / route assembles
+# frontend/dashboard/parts/ into one document and inlines the current DB
+# snapshot + fonts at request time (build_dashboard.py's build_dashboard_data()).
+# The bind mount below makes frontend/dashboard on the host the live source
+# inside the container, so template/asset edits need no image rebuild.
 name: mlb-market-value
 
 services:

@@ -33,6 +33,10 @@ backend/backtest_results.csv
 # source; regenerates itself from MLB's own CDN on first use.
 frontend/dashboard/logos_cache/
 
+# Snapshot + scrape caches (see build_dashboard.py / app/main.py) -- regenerated
+# from the live DB and the scraped sources, never committed.
+frontend/dashboard/.snapshot_cache/
+
 # Kilo tooling session state (agent-manager plans, worktrees)
 .kilo/plans/
 .kilo/worktrees/

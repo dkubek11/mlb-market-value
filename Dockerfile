@@ -23,7 +23,7 @@ COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip \
     && pip install -r /app/requirements.txt
 
-# Application code + the dashboard frontend (template, fonts, build module).
+# Application code + the dashboard frontend (parts/, fonts, build module).
 COPY backend /app/backend
 COPY frontend/dashboard /app/frontend/dashboard
 

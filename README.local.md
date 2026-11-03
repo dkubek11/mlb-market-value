@@ -33,11 +33,12 @@ uvicorn app.main:app --reload
 That's it. The database file `mlb_market_value.db` is created automatically in `backend/`.
 For SQLite local dev you do **not** need a `.env` file (see §2 below).
 
-The dashboard is a **single HTML file** — no separate frontend server or build
-toolchain. `GET /` renders `frontend/dashboard/dashboard_template.html` with the
-current data snapshot and fonts inlined at request time, so there is no offline
-build step. Edits to the template show up on the next page load; after a data
-refresh, reload the page (the API's snapshot cache expires after 30 minutes).
+The dashboard is assembled from source parts — no separate frontend server or
+build toolchain. `GET /` concatenates `frontend/dashboard/parts/` and inlines the
+current data snapshot and fonts at request time, so there is no offline build
+step. Edits under `frontend/dashboard/parts/` show up on the next page load;
+after a data refresh, reload the page (the API's snapshot cache expires after 30
+minutes).
 
 ## What's Different
 
@@ -114,10 +115,11 @@ The dashboard is served at `http://localhost:8000/`. API docs are at `http://loc
 
 ### 6. Frontend development (optional)
 
-The dashboard is a single HTML/JS/CSS template,
-[`frontend/dashboard/dashboard_template.html`](frontend/dashboard/), that the
-API renders live — no separate frontend server or build toolchain, and no
-offline build step. Edit the template and reload the page to see changes.
+The dashboard source lives in [`frontend/dashboard/parts/`](frontend/dashboard/)
+(`head/topbar/views.html` plus one JS module per feature), which the API
+assembles into a single document and renders live — no separate frontend server
+or build toolchain, and no offline build step. Edit the parts and reload the
+page to see changes.
 
 The API's `/` route inlines the current data snapshot (computed by
 `frontend/dashboard/build_dashboard.py`'s `build_dashboard_data()`) and the
@@ -183,11 +185,11 @@ DATABASE_URL="sqlite:///./mlb_market_value.db" python -m app.pipeline.run_comput
 
 ## Dashboard: Live Rendering
 
-The dashboard is a **single HTML file** (`dashboard_template.html`) that the
-API renders live — there is no offline build or snapshot file. `GET /` inlines
-the current data snapshot and fonts at request time and caches the rendered
-page for 30 minutes. `GET /api/dashboard` returns the same data as JSON for any
-client that wants it without the HTML.
+The dashboard is **assembled from source parts** (`frontend/dashboard/parts/`)
+that the API renders live — there is no offline build or snapshot file. `GET /`
+concatenates the parts and inlines the current data snapshot and fonts at
+request time and caches the rendered page for 30 minutes. `GET /api/dashboard`
+returns the same data as JSON for any client that wants it without the HTML.
 
 ## Containerized Stack (Docker Compose)
 
@@ -232,8 +234,8 @@ Make sure the venv is activated and you ran `pip install -r requirements.txt`.
 
 **Dashboard shows an error instead of the page**
 You're running the API from the repo root or wrong directory. The `/` route
-renders `frontend/dashboard/dashboard_template.html` relative to the backend
-(`main.py`). Run `uvicorn` from `backend/` (or set `PYTHONPATH=backend`).
+assembles `frontend/dashboard/parts/` relative to the backend (`main.py`). Run
+`uvicorn` from `backend/` (or set `PYTHONPATH=backend`).
 
 **Dashboard shows "No qualified players found for the YYYY season yet"**
 The season hasn't been ingested (or players don't meet the 150 PA / 50 IP

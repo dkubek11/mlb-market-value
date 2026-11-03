@@ -86,7 +86,7 @@ SEASON=2026 HISTORY_SEASONS=3 docker compose up -d --build
 
 ### Backend and frontend
 
-The backend is a **Python/FastAPI** service backed by Postgres (SQLAlchemy + Alembic migrations). The dashboard is a single HTML file (`dashboard_template.html`) that the API renders live: the `/` route inlines the current data snapshot and fonts at request time, so there's no separate frontend server, build toolchain, or offline build step. Edits to `frontend/dashboard/dashboard_template.html` take effect on the next page load.
+The backend is a **Python/FastAPI** service backed by Postgres (SQLAlchemy + Alembic migrations). The dashboard is assembled from source parts (`frontend/dashboard/parts/`: `head/topbar/views.html` plus one JS module per feature) into a single HTML document that the API renders live: the `/` route concatenates the parts and inlines the current data snapshot and fonts at request time, so there's no separate frontend server, build toolchain, or offline build step. Edits under `frontend/dashboard/parts/` take effect on the next page load.
 
 ### Data sources
 
