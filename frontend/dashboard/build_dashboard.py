@@ -28,6 +28,7 @@ from app.pipeline.projections import (
     BATTER_PROJECTION_STATS, PITCHER_PROJECTION_STATS, blend_projections,
 )
 from app.pipeline import expected_war
+from app.pipeline import war_projection
 from app.pipeline.comp_projections import compute_batter_comp_projections, compute_pitcher_comp_projections
 from app.pipeline.fangraphs_salary import TEAM_SLUG_TO_ABBREVIATION, fetch_team_contracts
 from app.pipeline import mlbtr_arbitration
@@ -348,6 +349,15 @@ def build_dashboard_data(season: int) -> dict:
     batter_future = compute_batter_projections_future_years(season)
     pitcher_future = compute_pitcher_projections_future_years(season)
 
+    # Five-year fWAR outlook + open-market contract estimate (Marcel-style, on
+    # fWAR through this season inclusive -- see war_projection.py). Separate
+    # from the process-stat projections above, which feed Projected Market
+    # Value and the Locks and stop at the season before this one.
+    print(f"[{season}] projecting 5-year fWAR and contract estimates...")
+    war_outlook = war_projection.build(
+        season, {int(pid): pos for pid, pos in zip(pitchers["player_id"], pitchers["position"])}
+    )
+
     # Real last-30-days actual performance (not season-to-date) for the Hot vs
     # Cold section -- a genuine "how is this player doing lately" signal,
     # compared against the same season-long projected true talent used
@@ -599,6 +609,10 @@ def build_dashboard_data(season: int) -> dict:
             # regression + comparable-player projections; see projections.py).
             "projected": {s: clean(proj.get(s)) for s in proj_stat_keys},
             "nComps": proj.get("nComps", 0),
+            # Projected fWAR for each of the next 5 seasons plus the open-market
+            # contract it implies (years / total / AAV) -- see war_projection.py.
+            # None when the player has no fWAR history.
+            "warOutlook": war_outlook["batter" if is_batter else "pitcher"].get(int(r.player_id)),
             # {season: {stat: value}} for each of the next 3 seasons -- same
             # regression-based true talent as "projected" above, just age-
             # adjusted forward multiple years instead of one (see

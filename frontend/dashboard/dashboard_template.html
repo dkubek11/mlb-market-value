@@ -503,6 +503,26 @@
   }
   .card-value-note { font-size: 11px; color: var(--ink-dim); margin-top: 6px; line-height: 1.5; }
 
+  /* 5-year WAR & contract estimate box on the player card */
+  .card-contract-est { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 4px; }
+  .card-contract-est .card-projected { margin-top: 0; }
+  .card-contract-aav { font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; color: var(--ink-dim); }
+  .war-rows { margin-top: 10px; }
+  .war-row {
+    display: grid; grid-template-columns: 38px 1fr 34px 58px; align-items: center; gap: 8px;
+    padding: 3px 0; font-family: "Courier Prime", ui-monospace, "SF Mono", Consolas, monospace; font-size: 11.5px;
+    color: var(--ink-dim);
+  }
+  .war-row .war-yr { color: var(--ink-dim); }
+  .war-bar { height: 7px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .war-bar-fill { height: 100%; background: var(--ink-dim); opacity: 0.55; border-radius: 4px; }
+  .war-row.in-deal .war-bar-fill { background: var(--accent); opacity: 1; }
+  .war-row .war-val { text-align: right; color: var(--ink); font-weight: 700; }
+  .war-row .war-dollars { text-align: right; }
+  .war-row.in-deal .war-dollars { color: var(--accent); font-weight: 700; }
+  .fa-note { font-size: 11.5px; color: var(--ink-dim); line-height: 1.55; margin: 12px 2px 28px; max-width: 760px; }
+  .war-row-head { color: var(--ink-dim); font-size: 9px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding-bottom: 4px; }
+
   .card-section-title {
     font-family: "Courier Prime", monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--ink-dim); text-align: left; margin: 4px 0 8px;
@@ -667,6 +687,7 @@
     </div>
     <button class="nav-item" data-tab="arbitration">Arbitration</button>
     <button class="nav-item" data-tab="rookies">Pre-Arbitration</button>
+    <button class="nav-item" data-tab="freeagents">Free Agents</button>
     <button class="nav-item" data-tab="custom">Weights</button>
     <div class="nav-drop">
       <button class="nav-item nav-drop-btn" type="button" aria-haspopup="true" aria-expanded="false">Teams <span class="caret">▾</span></button>
@@ -834,6 +855,32 @@
         <tbody id="arb-rows"></tbody>
       </table>
     </div>
+  </div>
+
+  <div id="freeagents-view" style="display:none">
+    <div class="controls">
+      <input class="search" id="fa-search" placeholder="Search player or team..." />
+      <div class="chips" id="fa-pos-chips"></div>
+      <div class="spacer"></div>
+      <span class="count" id="fa-count"></span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th data-sort="name">Player</th>
+            <th class="num" data-sort="faAge">Age (2027)</th>
+            <th class="num" data-sort="faWar1">2027 WAR</th>
+            <th class="num" data-sort="faWar5">5-Yr WAR</th>
+            <th class="num" data-sort="faYears">Years</th>
+            <th class="num" data-sort="faAav">AAV</th>
+            <th class="num" data-sort="faTotal">Total</th>
+          </tr>
+        </thead>
+        <tbody id="fa-rows"></tbody>
+      </table>
+    </div>
+    <p class="fa-note" id="fa-note"></p>
   </div>
 
   <div id="rookies-view" style="display:none">
@@ -1248,8 +1295,12 @@
     if (p.isPreArb || isArbEligible(p)) {
       return p.serviceYears != null && p.serviceYears + 1 >= 6.0;
     }
+    // After the season, FanGraphs rolls its contract pages over to the next
+    // year and drops players whose deals just expired, so a market-priced player
+    // with NO contract record at all has no deal for next season -- he is the
+    // free agent, not an unknown. (In-season every signed player has a record.)
     const contract = contracts[p.id];
-    return !!(contract && contract.endSeasonAll === CURRENT_SEASON);
+    return !contract || contract.endSeasonAll <= CURRENT_SEASON;
   }
 
   function contractYearRow(y) {
@@ -1382,6 +1433,45 @@
       </div>
       <div class="history-note">Performance vs. that season's position peers only (est. percentile) — no salary history exists for past seasons, so there's no historical Score.</div>
     `;
+  }
+
+  // 5-year fWAR outlook + the open-market contract it implies (war_projection.py).
+  // Shown on every card that has fWAR history, directly under the existing
+  // Next-Season Outlook / Projected Free Agent Value box -- it sits next to that
+  // number, it does not replace it: that one prices what similar players are paid
+  // under existing contracts, this one prices projected WAR over a multi-year deal.
+  function warOutlookHtml(record) {
+    const w = record.warOutlook;
+    if (!w) return '';
+    const first = CURRENT_SEASON + 1;
+    const maxWar = Math.max(...w.war, 1);
+    const rows = w.war.map((v, i) => {
+      const inDeal = i < w.years;
+      return `<div class="war-row${inDeal ? ' in-deal' : ''}">
+        <span class="war-yr">${first + i}</span>
+        <div class="war-bar"><div class="war-bar-fill" style="width:${(v / maxWar) * 100}%"></div></div>
+        <span class="war-val">${v.toFixed(1)}</span>
+        <span class="war-dollars">${inDeal ? fmtMoney(w.values[i]) : '—'}</span>
+      </div>`;
+    }).join('');
+    const hist = w.hist.map(h => `${h.season}: ${h.war.toFixed(1)}`).join(', ');
+    const dealLine = w.years > 0
+      ? `<div class="card-contract-est"><div class="card-projected">${w.years} yr${w.years > 1 ? 's' : ''} · ${fmtMoney(w.total)}</div><div class="card-contract-aav">${fmtMoney(w.aav)} / yr</div></div>`
+      : `<div class="card-contract-est"><div class="card-projected">No multi-year value</div></div>`;
+    const keep = w.keepWar;
+    const thinNote = (w.thin ? ' Limited MLB history behind this projection, so treat it as rough.' : '')
+      + (w.ageCapped ? ' The length is capped by age: a deal is not extended past his age-38 season.' : '');
+    return `
+      <div class="card-section-title">5-Year WAR &amp; Contract Estimate</div>
+      <div class="card-value-box">
+        <div class="card-stat-label">Projected Contract (fWAR model)</div>
+        ${dealLine}
+        <div class="war-rows">
+          <div class="war-row war-row-head"><span></span><span>Projected fWAR</span><span></span><span style="text-align:right">Value</span></div>
+          ${rows}
+        </div>
+        <div class="card-value-note"><strong>${w.war5.toFixed(1)} fWAR</strong> projected over ${first}–${first + 4}. Marcel-style: fWAR of ${hist} (weighted 5-4-3 by playing time, regressed toward league average), aged forward each year, priced at $11.23M per WAR rising 4% a year. Years are guaranteed while projected WAR stays at or above ${keep.toFixed(1)}; a model output, not a prediction of what a team will sign.${thinNote}</div>
+      </div>`;
   }
 
   function openPlayerCard(record) {
@@ -1525,6 +1615,7 @@
           ${contractHtml}
           ${valueHtml}
           ${outlookHtml}
+          ${warOutlookHtml(record)}
           ${percentileSection(record.isBatter ? 'Batting' : 'Pitching', statSet, record)}
           ${fieldingHtml}
           ${runningHtml}
@@ -2172,6 +2263,77 @@
       arbSort.dir = arbSort.key === key && arbSort.dir === 'desc' ? 'asc' : 'desc';
       arbSort.key = key;
       renderArbitration();
+    });
+  });
+
+  // --- Free Agents tab: this offseason's class (everyone isNearingFreeAgency
+  // flags -- contract ends after this season, or team-controlled with 6.000 years
+  // of service by next year) with the fWAR-model contract estimate from
+  // war_projection.py: projected years, AAV, and total.
+  let activeFaPos = 'All';
+  let faSort = { key: 'faTotal', dir: 'desc' };
+  document.getElementById('fa-pos-chips').innerHTML = POSITIONS.map(p =>
+    `<button class="chip${p === 'All' ? ' active' : ''}" data-pos="${p}">${p}</button>`
+  ).join('');
+
+  function renderFreeAgents() {
+    const q = document.getElementById('fa-search').value.trim().toLowerCase();
+    const pool = allPlayers.filter(p => p.warOutlook && isNearingFreeAgency(p));
+    pool.forEach(p => {
+      const w = p.warOutlook;
+      p.faAge = Math.floor(p.age || 0) + 1;
+      p.faWar1 = w.war[0];
+      p.faWar5 = w.war5;
+      p.faYears = w.years;
+      p.faAav = w.aav;
+      p.faTotal = w.total;
+    });
+    const rows = pool.filter(p =>
+      (activeFaPos === 'All' || p.position === activeFaPos) &&
+      (q === '' || matchesTeamQuery(p, q))
+    );
+    rows.sort((a, b) => {
+      const k = faSort.key;
+      if (k === 'name') return faSort.dir === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+      return faSort.dir === 'asc' ? a[k] - b[k] : b[k] - a[k];
+    });
+    document.getElementById('fa-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for their card' : '');
+    document.getElementById('fa-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
+      <tr class="row-toggle" data-idx="${i}">
+        <td><span class="chevron">▸</span>${playerNameCellHtml(p)}</td>
+        <td class="num">${p.faAge}</td>
+        <td class="num">${p.faWar1.toFixed(1)}</td>
+        <td class="num">${p.faWar5.toFixed(1)}</td>
+        <td class="num">${p.faYears > 0 ? p.faYears : '—'}</td>
+        <td class="num">${p.faYears > 0 ? fmtMoney(p.faAav) : '—'}</td>
+        <td class="num">${p.faYears > 0 ? fmtMoney(p.faTotal) : '—'}</td>
+      </tr>`
+    ).join('') : `<tr><td colspan="7"><div class="empty">No free agents match that search.</div></td></tr>`;
+    document.getElementById('fa-note').textContent =
+      `Contract estimates come from an fWAR projection (Marcel-style: last three seasons weighted 5-4-3 by playing time, regressed toward league average, aged forward) priced at $11.23M per WAR rising 4% a year. A year is guaranteed only while projected WAR stays at or above 1.2 (0.6 for relievers), never past age 38, and never beyond the 5-year projection window (so long deals for young stars are understated). These are model outputs, not predictions of what a team will sign; qualifying offers, injuries, and market competition are not modeled. Free-agent timing for team-controlled players uses an estimated service-time figure when MLB's is not available.`;
+    faRowsCurrent = rows;
+  }
+  let faRowsCurrent = [];
+
+  document.getElementById('fa-rows').addEventListener('click', e => {
+    const row = e.target.closest('.row-toggle');
+    if (!row) return;
+    openPlayerCard(faRowsCurrent[Number(row.dataset.idx)]);
+  });
+  document.getElementById('fa-search').addEventListener('input', renderFreeAgents);
+  document.getElementById('fa-pos-chips').addEventListener('click', e => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    activeFaPos = btn.dataset.pos;
+    document.querySelectorAll('#fa-pos-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
+    renderFreeAgents();
+  });
+  document.querySelectorAll('#freeagents-view thead th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      faSort.dir = faSort.key === key && faSort.dir === 'desc' ? 'asc' : 'desc';
+      faSort.key = key;
+      renderFreeAgents();
     });
   });
 
@@ -3616,7 +3778,7 @@
   });
 
   // --- Topbar nav ---
-  const TAB_VIEWS = ['home', 'players', 'rotation', 'bullpen', 'arbitration', 'rookies', 'teams', 'custom'];
+  const TAB_VIEWS = ['home', 'players', 'rotation', 'bullpen', 'arbitration', 'rookies', 'freeagents', 'teams', 'custom'];
   function switchTab(name) {
     currentTab = name;
     document.querySelectorAll('.nav-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
@@ -3711,6 +3873,7 @@
     renderBullpen();
     renderArbitration();
     renderRookies();
+    renderFreeAgents();
     renderTeams();
     renderCustomScore();
   }
