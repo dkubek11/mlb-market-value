@@ -28,9 +28,10 @@ The fastest way to run the project locally is `scripts/dev.sh` — it sets up th
 ### Docker (recommended)
 
 ```bash
+export POSTGRES_PASSWORD='choose-a-local-password'
 docker compose up -d --build
 ```
-The whole app — Postgres, API, and dashboard — runs as two containers:
+The whole app — Postgres, API, and dashboard — runs as two containers. `POSTGRES_PASSWORD` is required and must not be committed.
 
 ## Architecture - Repository Layout
 
