@@ -6,9 +6,9 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 load_dotenv()
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql+psycopg2://postgres:postgres@localhost:5432/mlb_market_value"
-)
+# Default to credential-free SQLite for local development. Production and
+# Docker deployments must provide DATABASE_URL explicitly.
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./mlb_market_value.db")
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

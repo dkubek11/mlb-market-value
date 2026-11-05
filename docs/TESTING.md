@@ -67,7 +67,8 @@ DATABASE_URL="sqlite:////tmp/mlb_mv_test.db" alembic current
 
 ```bash
 cd backend
-DATABASE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/mlb_market_value" alembic upgrade head
+# Export POSTGRES_USER / POSTGRES_PASSWORD first; never commit the password.
+DATABASE_URL="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/mlb_market_value" alembic upgrade head
 ```
 
 *(Note: In the Docker Compose stack, migrations run automatically on container startup via `app.pipeline.run_all`.)*
@@ -201,6 +202,7 @@ Requires Docker Desktop or the Docker Engine daemon.
 ### Boot the stack:
 
 ```bash
+export POSTGRES_PASSWORD='choose-a-local-password'
 docker compose up -d --build
 ```
 
