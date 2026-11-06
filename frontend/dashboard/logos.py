@@ -18,7 +18,7 @@ from pathlib import Path
 
 import requests
 
-LOGO_URL = "https://www.mlbstatic.com/team-logos/{team_id}.svg"
+LOGO_URL = "https://www.mlbstatic.com/team-logos/team-primary-on-dark/{team_id}.svg"
 CACHE_DIR = Path(__file__).parent / "logos_cache"
 
 

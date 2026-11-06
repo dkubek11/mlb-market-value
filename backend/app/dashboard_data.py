@@ -1,7 +1,7 @@
 """Builds the dashboard's data payload from the live database.
 
 The dashboard is served live: the FastAPI ``/`` route (see app/main.py)
-renders ``dashboard_template.html`` with a snapshot computed by
+assembles ``frontend/dashboard/parts/`` and renders it with a snapshot computed by
 ``frontend/dashboard/build_dashboard.py``'s :func:`build_dashboard_data`,
 while ``GET /api/dashboard`` exposes :func:`build_dashboard_payload` here as
 JSON for any client that wants the data without the HTML. There is no offline
@@ -29,6 +29,10 @@ from app.pipeline.fangraphs_salary import (
     TEAM_SLUG_TO_ABBREVIATION,
     fetch_team_contracts,
 )
+from app.pipeline.trailing_stats import (
+    configure_cache_dir as _configure_trailing_cache,
+    fetch_last30,
+)
 from app.pipeline.projections import (
     BATTER_PROJECTION_STATS,
     PITCHER_PROJECTION_STATS,
@@ -36,6 +40,11 @@ from app.pipeline.projections import (
     compute_batter_projections,
     compute_pitcher_projections,
 )
+from app.pipeline import war_projection
+
+# Co-locate the trailing-stats cache with the snapshot caches so the HTML
+# snapshot (build_dashboard_data) and the JSON payload share one cached fetch.
+_configure_trailing_cache(Path(__file__).resolve().parent.parent.parent / "frontend" / "dashboard" / ".snapshot_cache")
 
 MIN_BATTER_PA = 150
 MIN_IP_SP = 50
@@ -133,6 +142,8 @@ def _to_record(
     stat_keys: list[str],
     proj_map: dict[int, dict],
     proj_stat_keys: list[str],
+    last30_map: dict[int, float] | None = None,
+    war_outlook: dict[str, dict[int, dict]] | None = None,
 ) -> dict:
     proj = proj_map.get(int(r.player_id), {})
     return {
@@ -152,6 +163,17 @@ def _to_record(
         # regression + comparable-player projections; see projections.py).
         "projected": {s: _clean(proj.get(s)) for s in proj_stat_keys},
         "nComps": proj.get("nComps", 0),
+        # Projected fWAR for each of the next 5 seasons plus the open-market
+        # contract it implies (see war_projection.py). None without fWAR history.
+        "warOutlook": (
+            war_outlook["batter" if is_batter else "pitcher"].get(int(r.player_id))
+            if war_outlook else None
+        ),
+        # Real AVG (batters) / ERA (pitchers) over the trailing 30 real days
+        # (not season-to-date) -- None if the player didn't clear the
+        # playing-time floor in that window. Powers the Home-tab Hot vs Cold
+        # section (compared against stats.ba / stats.era).
+        "last30": _clean(last30_map.get(int(r.player_id))) if last30_map else None,
     }
 
 
@@ -237,6 +259,17 @@ def build_dashboard_payload(season: int, *, fetch_live_contracts: bool = True) -
     batter_proj = blend_projections(batter_marcel, batter_comp, list(BATTER_PROJECTION_STATS.keys()))
     pitcher_proj = blend_projections(pitcher_marcel, pitcher_comp, list(PITCHER_PROJECTION_STATS.keys()))
 
+    # Five-year fWAR outlook + open-market contract estimate (see
+    # war_projection.py). Separate from the process-stat projections above.
+    print(f"[{season}] projecting 5-year fWAR and contract estimates...")
+    war_outlook = war_projection.build(
+        season, {int(pid): pos for pid, pos in zip(pitchers["player_id"], pitchers["position"])}
+    )
+
+    print(f"[{season}] fetching trailing 30-day stats for Hot vs Cold...")
+    last30_batting, last30_pitching = fetch_last30(season=season)
+    print(f"  last30: {len(last30_batting)} batters, {len(last30_pitching)} pitchers clear the playing-time floor")
+
     position_stats: dict[str, dict[str, dict]] = {}
     for pos, grp in batters.groupby("position"):
         position_stats[pos] = {}
@@ -256,8 +289,8 @@ def build_dashboard_payload(season: int, *, fetch_live_contracts: bool = True) -
             )
 
     all_players = (
-        [ _to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys()) for r in batters.itertuples() ]
-        + [ _to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys()) for r in pitchers.itertuples() ]
+        [ _to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys(), last30_batting, war_outlook) for r in batters.itertuples() ]
+        + [ _to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys(), last30_pitching, war_outlook) for r in pitchers.itertuples() ]
     )
 
     print(f"[{season}] building team payroll + rosters (all rostered players, not just qualifiers)...")
@@ -291,6 +324,7 @@ def build_dashboard_payload(season: int, *, fetch_live_contracts: bool = True) -
         team_colors = json.load(f)
 
     return {
+        "season": season,
         "allPlayers": all_players,
         "positionStats": position_stats,
         "teams": teams_out,

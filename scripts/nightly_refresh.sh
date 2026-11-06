@@ -51,4 +51,3 @@ echo "=== Nightly refresh completed successfully at $(date) ==="
 if [ -d "$LOG_DIR" ]; then
     ls -1t "$LOG_DIR"/refresh_*.log 2>/dev/null | tail -n +31 | xargs rm -f 2>/dev/null || true
 fi
-

@@ -13,8 +13,8 @@ Flow:
   5. exec uvicorn (the running server)
 
 The dashboard has no offline build step: the FastAPI `/` route computes the
-snapshot (build_dashboard_data) and renders dashboard_template.html with the
-data inlined at request time. Container restarts are fast because every
+snapshot (build_dashboard_data) and assembles frontend/dashboard/parts/ with
+the data inlined at request time. Container restarts are fast because every
 ingest step is idempotent and guarded by a cheap "is this season already in
 the DB?" check.
 
