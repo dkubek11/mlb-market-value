@@ -51,7 +51,7 @@ minutes).
 | `.env` needed | Optional (defaults in `scripts/dev.sh`, or set `DATABASE_URL=sqlite:///...`) | No (set inside `docker-compose.yml`) |
 | Migrations | `alembic upgrade head` (dev.sh does it) | Automatic on container boot |
 | Data ingest | Manual (`python -m app.pipeline.run_ingest`) | Automatic on container boot |
-| Frontend dev | Single HTML template rendered live at `/` | Same, served by API container |
+| Frontend dev | Live-assembled dashboard parts rendered at `/` | Same, served by API container |
 | Production parity | Lower (SQLite dialect) | Exact (Postgres 16) |
 
 ## Setup in Detail
@@ -68,18 +68,18 @@ pip install -r requirements.txt
 
 ### 2. Environment config
 
-> **Note:** the checked-in `backend/.env.example` points at **Postgres**
-> (`postgresql+psycopg2://postgres:postgres@localhost:5432/mlb_market_value`),
-> as does the default in `backend/app/db.py`. For SQLite local dev, either
-> overwrite your `.env` with `DATABASE_URL=sqlite:///mlb_market_value.db` or
-> set the override on every command (as in every example below):
+> **Note:** `backend/.env.example` shows the **Postgres** URL format with a
+> `CHANGE_ME` password placeholder. `backend/app/db.py` defaults to
+> credential-free SQLite. For SQLite local dev, either overwrite your `.env`
+> with `DATABASE_URL=sqlite:///mlb_market_value.db` or set the override on
+> every command (as in every example below):
 
 ```
 DATABASE_URL=sqlite:///mlb_market_value.db
 ```
 
 If you copied an old `.env` that points to Postgres, either delete it (the app
-will fall back to the Postgres default) or overwrite it with the SQLite URL.
+now falls back to SQLite) or overwrite it with the SQLite URL.
 
 ### 3. Database schema
 
@@ -219,12 +219,14 @@ returns the same data as JSON for any client that wants it without the HTML.
 For a production-like Postgres environment with automatic data ingestion on boot:
 
 ```bash
+# Required: choose a local Postgres password (not committed).
+export POSTGRES_PASSWORD='choose-a-local-password'
 docker compose up -d --build
 ```
 
 - **http://localhost:8000/** → dashboard
 - **http://localhost:8000/docs** → API docs
-- Postgres on host port **5433** (`psql -p 5433 -U postgres -d mlb_market_value`, password `postgres`)
+- Postgres on host port **5433** (`psql -p 5433 -U postgres -d mlb_market_value`; enter `$POSTGRES_PASSWORD` when prompted)
 - DB persists in named volume `mlb_mv_pgdata`; survives `docker compose down`
 - Wipe everything: `docker compose down -v`
 

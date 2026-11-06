@@ -28,9 +28,10 @@ The fastest way to run the project locally is `scripts/dev.sh` — it sets up th
 ### Docker (recommended)
 
 ```bash
+export POSTGRES_PASSWORD='choose-a-local-password'
 docker compose up -d --build
 ```
-The whole app — Postgres, API, and dashboard — runs as two containers:
+The whole app — Postgres, API, and dashboard — runs as two containers. `POSTGRES_PASSWORD` is required and must not be committed.
 
 ## Architecture - Repository Layout
 
@@ -73,13 +74,15 @@ The whole app — Postgres, API, and dashboard — runs as two containers:
 ### Repository layout
 
 - `backend/` — the Python pipeline (stat downloads, scoring, projections), the FastAPI service, and database migrations.
-- `frontend/dashboard/` — the dashboard template and the build scripts that turn database data into a single HTML file.
+- `frontend/dashboard/` — the live-rendered dashboard source (`parts/` plus `styles.css`), shared assets, and `build_dashboard.py`, which computes the data snapshot served by FastAPI.
 - `scripts/` — local run, validation, and scheduling helpers.
 - `docs/` — planning, testing, and migration notes.
 
 ### Backend and frontend
 
 The backend is a **Python/FastAPI** service backed by Postgres (SQLAlchemy + Alembic migrations). The dashboard is assembled from source parts (`frontend/dashboard/parts/`: `head/topbar/views.html` plus one JS module per feature) into a single HTML document that the API renders live: the `/` route concatenates the parts and inlines the current data snapshot and fonts at request time, so there's no separate frontend server, build toolchain, or offline build step. Edits under `frontend/dashboard/parts/` take effect on the next page load.
+
+The frontend uses hash routes (`#/home`, `#/players/<group>`, `#/pre-arbitration`, `#/teams`, `#/team/<abbr>`, `#/weights`, etc.) with legacy hashes normalized on load. `#/players` groups infielders, outfielders, rotation, and bullpen on one page; legacy `#/rotation` and `#/bullpen` routes redirect to the matching group. Team pages (payroll, projected market value, unit efficiency, roster value, multi-year runway) derive from the same live player snapshot as the global tables.
 
 ### Data sources
 

@@ -14,13 +14,13 @@ A Python data pipeline ( [`backend/`](backend/) ) and a self-contained HTML dash
 
 ```
 Season ingest ──▶ compute_value ──▶ FastAPI live render (GET /)
-(stats & salaries)  (compute percentiles)  (inlines snapshot & fonts into dashboard_template.html)
+(stats & salaries)  (compute percentiles)  (inlines snapshot & CSS into frontend/dashboard/parts/)
 ```
 
 1. [`run_ingest.py`](backend/app/pipeline/run_ingest.py) orchestrates pulls from MLB Stats API, Statcast, FanGraphs (batting/pitching/salary), and fielding sources. Upserts into Postgres/SQLite. Historical seasons (2015-2025) have stats and fielding only — salary scraping is skipped (`--skip-salary`) because RosterResource only exposes current rosters.
 2. [`run_compute_value.py`](backend/app/pipeline/run_compute_value.py) computes within-position z-scores, composite percentiles, salary percentiles, value scores, and pre-arb market salary projections. Writes [`player_value`](backend/app/models.py:171) and [`team_payroll_summary`](backend/app/models.py:189) tables.
 3. [`build_dashboard.py`](frontend/dashboard/build_dashboard.py) provides `build_dashboard_data(season)` to build the full data snapshot from the database and live scrapes.
-4. [`main.py`](backend/app/main.py) serves `GET /` live, inlining the snapshot and base64 fonts into `dashboard_template.html` on request (cached for 30 minutes, or refreshed immediately with `?refresh=1`). REST endpoints like `/api/dashboard` expose the payload directly.
+4. [`main.py`](backend/app/main.py) serves `GET /` live, assembling `frontend/dashboard/parts/` and inlining the snapshot and CSS on request (cached for 30 minutes, or refreshed immediately with `?refresh=1`). REST endpoints like `/api/dashboard` expose the payload directly.
 
 ### Key Design Notes
 
@@ -28,7 +28,7 @@ Season ingest ──▶ compute_value ──▶ FastAPI live render (GET /)
 - **Comp projections** ([`comp_projections.py`](backend/app/pipeline/comp_projections.py)): Nearest-neighbor search against 2015-2024 historical player-seasons, using position-relative z-score fingerprints with recency weighting.
 - **Blend**: Final projection is 50/50 Marcel + comp (controlled by [`COMP_BLEND_WEIGHT = 0.5`](backend/app/pipeline/projections.py:184)).
 - **Pre-arb exclusion**: Players on pre-arbitration or MiLB contracts are excluded from salary comparison (CBA-minimum isn't market-determined) and get a projected market salary instead.
-- **Dashboard**: A single-file HTML/JS/CSS app with live-adjustable stat weights, a diamond field view, and player detail modals.
+- **Dashboard**: A live-assembled HTML/JS/CSS dashboard with hash-routed global views, demo-style team pages, live-adjustable stat weights, a diamond field view, and player detail modals.
 
 ---
 
@@ -220,7 +220,7 @@ A catch-all section for changes large and small. Add items freely as they come u
 
 > **Status: Completed!** FastAPI now directly serves the live rendered HTML dashboard at `GET /` and the structured payload at `GET /api/dashboard`.
 
-The [`main.py`](backend/app/main.py) service renders `frontend/dashboard/dashboard_template.html` with data from `build_dashboard_data(season)` inlined at request time, caching pages for 30 minutes (bypassable with `?refresh=1`). Offline HTML splicing has been removed.
+The [`main.py`](backend/app/main.py) service renders the assembled `frontend/dashboard/parts/` with data from `build_dashboard_data(season)` inlined at request time, caching pages for 30 minutes (bypassable with `?refresh=1`). Offline HTML splicing has been removed.
 
 ### Refactor `build_dashboard.py` sys.path Hack
 
@@ -563,7 +563,7 @@ Teams make huge financial decisions based on prospect development (trading futur
 ### What Exists Today
 
 - Pre-arb players have a `projected_salary` in [`player_value`](backend/app/models.py:171) based on comparable market-priced MLB peers.
-- The Rookies tab in the dashboard shows these players with their projected salary and surplus.
+- The Pre-Arbitration tab in the dashboard shows these players with their projected salary and surplus.
 - [`comp_projections.py`](backend/app/pipeline/comp_projections.py) already finds historical comps based on MLB stat fingerprints — but it has no minor league context.
 
 ### Proposed Data Model
@@ -715,7 +715,7 @@ flowchart TD
         CUT_T --> FARM[Farm System Tab]
         PRO --> FARM
         MILB --> FARM
-        CUT_T --> ROK[Rookies Tab extended\nwith prospect badges]
+        CUT_T --> ROK[Pre-Arbitration Tab extended\nwith prospect badges]
     end
 
     subgraph Projection Enhancement
