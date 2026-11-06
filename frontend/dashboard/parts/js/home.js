@@ -1,7 +1,12 @@
-  // --- Home (v2): dual league carousels + Explore + contract locks ---
+  // --- Home (v2): dual league carousels + Explore ---
   const teamAbbrToLeague = Object.fromEntries(teams.map(t => [t.abbr, t.league]));
   const marketPlayers = allPlayers.filter(p => !p.isPreArb);
-  const carouselState = { nl: 0, al: 0 };
+  const carouselState = {
+    'nl-bat': 0,
+    'nl-pit': 0,
+    'al-bat': 0,
+    'al-pit': 0,
+  };
   let homeRowsCurrent = [];
   // Which teams' rows are expanded in Best/Worst Rotations, by abbr.
   // Module-level (not reset per-render) so it survives the renderHome()
@@ -35,39 +40,91 @@
     return idx;
   }
 
-  function renderCarousel(league) {
-    const idx = carouselState[league];
+  function homePlayerTheadHtml(extraThs = '') {
+    return `<thead>
+      <tr>
+        <th>Player</th>
+        <th>Pos</th>
+        <th>Value Tier</th>
+        <th>Contract</th>
+        <th class="mono">${CURRENT_SEASON} Salary</th>
+        <th class="mono">Perf %</th>
+        <th class="mono">Projected Market</th>
+        <th class="mono">Net Surplus / Deficit</th>
+        <th class="mono">Key Stat Driver</th>${extraThs}
+      </tr>
+    </thead>`;
+  }
+
+  function homePlayerRowHtml(p, extraTds = '') {
+    const tier = tierForPlayer(p);
+    const contract = contractLabel(p);
+    const surplus = playerSurplus(p);
+    const market = playerMarketValue(p);
+    const pctl = p.compPct != null ? Math.round(p.compPct) : null;
+    const pidx = pushHomeRow(p);
+    return `<tr class="player-roster-row" data-pidx="${pidx}" tabindex="0">
+      <td class="player-cell">${headshotHtml(p, 'table-avatar')}<div class="name-meta"><span class="player-name-text">${p.name}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team}</span></div></td>
+      <td><span class="pos-badge">${p.position}</span></td>
+      <td><span class="badge-tier ${tier.cls}">${tier.label}</span></td>
+      <td><span class="contract-tag ${contract.cls}">${contract.label}</span></td>
+      <td class="mono">$${(p.salary || 0).toLocaleString()}</td>
+      <td class="mono font-bold ${perfPercentileCls(pctl)}">${formatOrdinal(pctl)}</td>
+      <td class="mono">$${Math.round(market).toLocaleString()}</td>
+      <td class="mono font-bold ${surplus >= 0 ? 'surplus-pos' : 'surplus-neg'}">${surplus >= 0 ? '+' : '-'}$${Math.abs(Math.round(surplus)).toLocaleString()}</td>
+      <td class="mono">${primaryDriver(p)}</td>${extraTds}
+    </tr>`;
+  }
+
+  function renderCarousel(carouselId) {
+    if (carouselId === 'nl' || carouselId === 'al') {
+      renderCarousel(carouselId + '-bat');
+      renderCarousel(carouselId + '-pit');
+      return;
+    }
+    const idx = carouselState[carouselId] || 0;
+    const parts = carouselId.split('-');
+    const league = parts[0] || 'nl';
+    const group = parts[1] || 'bat';
     const leagueUpper = league.toUpperCase();
+    const isBatter = group === 'bat';
+    const label = isBatter ? 'Position Players' : 'Pitchers';
     const inLeague = marketPlayers.filter(p => leagueOf(p) === leagueUpper);
-    const batters = inLeague.filter(p => p.isBatter);
-    const pitchers = inLeague.filter(p => !p.isBatter);
+    const players = inLeague.filter(p => isBatter ? p.isBatter : !p.isBatter);
+
     const slideHtml = (s) => {
       const dir = s === 0 ? 'desc' : 'asc';
       const sortFn = (a, b) => dir === 'desc' ? b.score - a.score : a.score - b.score;
-      const bat = [...batters].sort(sortFn).slice(0, 8);
-      const pit = [...pitchers].sort(sortFn).slice(0, 8);
-      const half = (records, label) => {
-        const rows = records.length
-          ? records.map(p => `<button class="carousel-row" data-pidx="${pushHomeRow(p)}">
-              <span class="carousel-row-name">${p.name} <span class="carousel-row-tag">${teamLogoImg(p.team, 13)}${p.team} · ${p.position}</span></span>
-              <span class="carousel-row-val ${p.score >= 0 ? 'good' : 'bad'}" data-count="${p.score}" data-count-fmt="signed">${fmtSigned(p.score)}</span>
-            </button>`).join('')
-          : `<div class="empty">No qualifying players in the ${leagueUpper}.</div>`;
-        return `<div class="carousel-half">
-          <div class="carousel-half-head">${label} <span class="count">${records.length}</span></div>
-          ${rows}
-        </div>`;
-      };
-      return `<div class="carousel-slide${s === idx ? ' active' : ''}" data-slide="${s}">${half(bat, 'Position Players')}${half(pit, 'Pitchers')}</div>`;
+      const records = [...players].sort(sortFn).slice(0, 8);
+      const rows = records.length
+        ? `<div class="table-container table-scroll">
+            <table class="roster-table">
+              ${homePlayerTheadHtml('<th class="mono">Score</th>')}
+              <tbody>
+                ${records.map(p => homePlayerRowHtml(p, `<td class="mono font-bold ${p.score >= 0 ? 'surplus-pos' : 'surplus-neg'}">${fmtSigned(p.score)}</td>`)).join('')}
+              </tbody>
+            </table>
+          </div>`
+        : `<div class="empty">No qualifying ${label.toLowerCase()} in the ${leagueUpper}.</div>`;
+      return `<div class="carousel-slide${s === idx ? ' active' : ''}" data-slide="${s}">
+        ${rows}
+      </div>`;
     };
-    document.getElementById('slides-' + league).innerHTML = [0, 1].map(slideHtml).join('');
-    const badge = document.getElementById('badge-' + league);
-    badge.textContent = idx === 0 ? 'UNDER VALUED' : 'OVER VALUED';
-    badge.classList.toggle('under', idx === 0);
-    badge.classList.toggle('over', idx !== 0);
-    document.getElementById('dots-' + league).innerHTML = [0, 1].map(s =>
-      `<button class="carousel-dot${s === idx ? ' active' : ''}" data-carousel="${league}" data-slide="${s}" aria-label="Slide ${s + 1}"></button>`
-    ).join('');
+
+    const slidesEl = document.getElementById('slides-' + carouselId);
+    if (slidesEl) slidesEl.innerHTML = [0, 1].map(slideHtml).join('');
+    const badge = document.getElementById('badge-' + carouselId);
+    if (badge) {
+      badge.textContent = idx === 0 ? 'UNDER VALUED' : 'OVER VALUED';
+      badge.classList.toggle('under', idx === 0);
+      badge.classList.toggle('over', idx !== 0);
+    }
+    const dotsEl = document.getElementById('dots-' + carouselId);
+    if (dotsEl) {
+      dotsEl.innerHTML = [0, 1].map(s =>
+        `<button class="carousel-dot${s === idx ? ' active' : ''}" data-carousel="${carouselId}" data-slide="${s}" aria-label="Slide ${s + 1}"></button>`
+      ).join('');
+    }
   }
 
   // Hot vs Cold is a real streak signal: how a player's last 30 real days
@@ -101,26 +158,75 @@
   }
 
   function renderHotCold() {
-    const hot = [], cold = [];
-    marketPlayers.forEach(p => {
+    const hotBat = [], hotPit = [];
+    const coldBat = [], coldPit = [];
+    allPlayers.forEach(p => {
       const arrow = last30Arrow(p);
       if (!arrow) return;
-      if (arrow.cls === 'good') hot.push({ p, sig: arrow.sig });
-      else cold.push({ p, sig: arrow.sig });
+      const target = arrow.cls === 'good'
+        ? (p.isBatter ? hotBat : hotPit)
+        : (p.isBatter ? coldBat : coldPit);
+      target.push({ p, sig: arrow.sig });
     });
-    hot.sort((a, b) => b.sig.gap - a.sig.gap);
-    cold.sort((a, b) => a.sig.gap - b.sig.gap);
-    const row = ({ p, sig }) => {
+    hotBat.sort((a, b) => b.sig.gap - a.sig.gap);
+    hotPit.sort((a, b) => b.sig.gap - a.sig.gap);
+    coldBat.sort((a, b) => a.sig.gap - b.sig.gap);
+    coldPit.sort((a, b) => a.sig.gap - b.sig.gap);
+
+    function pickTop10(batList, pitList) {
+      const bCount = Math.min(5, batList.length);
+      const pCount = Math.min(5, pitList.length);
+      const extraB = Math.min(batList.length - bCount, Math.max(0, 10 - bCount - pCount));
+      const extraP = Math.min(pitList.length - pCount, Math.max(0, 10 - bCount - pCount - extraB));
+      const combined = [
+        ...batList.slice(0, bCount + extraB),
+        ...pitList.slice(0, pCount + extraP),
+      ];
+      combined.sort((a, b) => {
+        const aPct = a.sig.projected ? Math.abs(a.sig.gap / a.sig.projected) : 0;
+        const bPct = b.sig.projected ? Math.abs(b.sig.gap / b.sig.projected) : 0;
+        return bPct - aPct;
+      });
+      return combined;
+    }
+
+    const hot = pickTop10(hotBat, hotPit);
+    const cold = pickTop10(coldBat, coldPit);
+
+    const formatDeltaTd = ({ p, sig }) => {
       const dPct = sig.projected ? (sig.gap / sig.projected) * 100 : null;
       const delta = dPct != null ? (dPct >= 0 ? '+' : '') + dPct.toFixed(1) + '%' : '';
       const over = sig.gap > 0;
-      return `<button class="pick-row" data-pidx="${pushHomeRow(p)}">
-        <span class="preview-row-name">${p.name} <span class="preview-row-tag">${teamLogoImg(p.team, 13)}${p.team} · ${p.position}</span></span>
-        <span class="preview-row-val ${over ? 'good' : 'bad'}">${delta} <span class="regression-tag ${over ? 'good' : 'bad'}">${over ? '▲' : '▼'}</span></span>
-      </button>`;
+      return `<td class="mono font-bold ${over ? 'surplus-pos' : 'surplus-neg'}">${delta} <span class="regression-tag ${over ? 'good' : 'bad'}">${over ? '▲' : '▼'}</span></td>`;
     };
-    const hotRows = hot.length ? hot.slice(0, 10).map(row).join('') : '<div class="empty">No players past the noise threshold in this build.</div>';
-    const coldRows = cold.length ? cold.slice(0, 10).map(row).join('') : '<div class="empty">No players past the noise threshold in this build.</div>';
+
+    const hasLast30Data = allPlayers.some(p => p.last30 != null);
+    const emptyMsg = hasLast30Data
+      ? 'No players past the noise threshold in this build.'
+      : 'No trailing 30-day regular season data available for this season window.';
+
+    const hotTable = hot.length
+      ? `<div class="table-container table-scroll">
+          <table class="roster-table">
+            ${homePlayerTheadHtml('<th class="mono">Streak Delta</th>')}
+            <tbody>
+              ${hot.map(item => homePlayerRowHtml(item.p, formatDeltaTd(item))).join('')}
+            </tbody>
+          </table>
+        </div>`
+      : `<div class="empty">${emptyMsg}</div>`;
+
+    const coldTable = cold.length
+      ? `<div class="table-container table-scroll">
+          <table class="roster-table">
+            ${homePlayerTheadHtml('<th class="mono">Streak Delta</th>')}
+            <tbody>
+              ${cold.map(item => homePlayerRowHtml(item.p, formatDeltaTd(item))).join('')}
+            </tbody>
+          </table>
+        </div>`
+      : `<div class="empty">${emptyMsg}</div>`;
+
     document.getElementById('explore-hot-cold').innerHTML = `
       <div class="preview-head">
         <h3>Hot vs Cold <span class="preview-sub">last 30 real days vs. this season</span></h3>
@@ -128,18 +234,18 @@
       <div class="hot-cold-cols">
         <div>
           <div class="explore-subhead hot">Hot — outperforming over the last 30 days</div>
-          ${hotRows}
+          ${hotTable}
         </div>
         <div>
           <div class="explore-subhead cold">Cold — underperforming over the last 30 days</div>
-          ${coldRows}
+          ${coldTable}
         </div>
       </div>`;
   }
 
   function renderBullpenOverview() {
     const rps = marketPlayers.filter(p => p.position === 'RP');
-    const hasSaves = p => (p.stats.saves || 0) > 0;
+    const hasSaves = p => (p.stats && p.stats.saves || 0) > 0;
     const highLev = rps.filter(hasSaves).slice(0, 5);
     const rest = rps.filter(p => !hasSaves(p));
     const setup = [...rest]
@@ -147,28 +253,33 @@
       .slice(0, 5);
     const middle = rest
       .filter(p => !setup.includes(p))
-      .sort((a, b) => (b.stats.ip || 0) - (a.stats.ip || 0))
+      .sort((a, b) => (b.stats && b.stats.ip || 0) - (a.stats && a.stats.ip || 0))
       .slice(0, 5);
+
     const tierHtml = (title, players) => {
-      const rows = players.length ? players.map(p => {
-        const kbb = kMinusBbPct(p);
-        const surCls = p.paySurplus != null ? (p.paySurplus >= 0 ? ' good' : ' bad') : '';
-        return `<tr data-pidx="${pushHomeRow(p)}">
-              <td>${playerNameCellHtml(p)}</td>
-          <td class="num">${p.stats.era != null ? p.stats.era.toFixed(2) : '—'}</td>
-          <td class="num">${kbb != null ? kbb.toFixed(1) + '%' : '—'}</td>
-          <td class="num">${warVal(p)}</td>
-          <td class="num${surCls}">${surplusM(p)}</td>
-        </tr>`;
-      }).join('') : '<tr><td colspan="5" class="num">No RPs in this tier.</td></tr>';
+      const tableContent = players.length
+        ? `<div class="table-container table-scroll">
+            <table class="roster-table">
+              ${homePlayerTheadHtml('<th class="mono">ERA</th><th class="mono">K-BB%</th>')}
+              <tbody>
+                ${players.map(p => {
+                  const kbb = kMinusBbPct(p);
+                  return homePlayerRowHtml(p, `
+                    <td class="mono">${p.stats && p.stats.era != null ? p.stats.era.toFixed(2) : '—'}</td>
+                    <td class="mono">${kbb != null ? kbb.toFixed(1) + '%' : '—'}</td>
+                  `);
+                }).join('')}
+              </tbody>
+            </table>
+          </div>`
+        : `<div class="empty">No RPs in this tier.</div>`;
+
       return `<div class="tier-block">
         <div class="tier-head">${title}</div>
-        <table class="mini-table">
-          <thead><tr><th>Player</th><th class="num">ERA</th><th class="num">K-BB%</th><th class="num">bWAR</th><th class="num">Surplus</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+        ${tableContent}
       </div>`;
     };
+
     document.getElementById('explore-bullpen').innerHTML = `
       <div class="preview-head">
         <h3>Bullpen overview <span class="preview-sub">approximate tiers — no leverage-index data yet</span></h3>
@@ -183,229 +294,111 @@
     const aggs = teams.map(t => {
       const sps = t.rotation;
       if (!sps || sps.length < 2) return null;
-      const fips = sps.map(p => p.stats.fip).filter(v => v != null);
+      const fips = sps.map(p => p.stats && p.stats.fip).filter(v => v != null);
       return {
-        name: t.name, abbr: t.abbr,
+        name: t.name, abbr: t.abbr, division: t.division, league: t.league,
         sps,
         avgScore: t.rotationScore,
         avgFip: fips.length ? fips.reduce((a, v) => a + v, 0) / fips.length : null,
-        totalIp: sps.reduce((a, p) => a + (p.stats.ip || 0), 0),
+        totalIp: sps.reduce((a, p) => a + (p.stats && p.stats.ip || 0), 0),
         payroll: sps.reduce((a, p) => a + (p.aav || 0), 0),
       };
     }).filter(Boolean);
+    const aggsSorted = [...aggs].sort((a, b) => b.avgScore - a.avgScore);
+    aggs.forEach(t => {
+      t.mlbRank = aggsSorted.findIndex(x => x.abbr === t.abbr) + 1;
+      const leagueSorted = aggsSorted.filter(x => x.league === t.league);
+      t.leagueRank = leagueSorted.findIndex(x => x.abbr === t.abbr) + 1;
+    });
     const best = [...aggs].sort((a, b) => b.avgScore - a.avgScore).slice(0, 5);
     const worst = [...aggs].sort((a, b) => a.avgScore - b.avgScore).slice(0, 5);
+
     const row = t => {
       const expanded = expandedRotationTeams.has(t.abbr);
+      const pair = teamColors[t.abbr] || (t.abbr === 'OAK' ? teamColors.ATH : null) || ['#6aa9e9', '#1b3a5c'];
+      const primaryColor = pair[0] || 'var(--accent-light-blue)';
+      const teamObj = teams.find(x => x.abbr === t.abbr) || t;
+      const slug = teamSlug(teamObj);
+
       const playersHtml = expanded
-        ? `<table class="mini-table rotation-players">
-            <thead><tr><th>Player</th><th class="num">IP</th><th class="num" title="Share of a full 180-IP starter workload; scales this pitcher's pull on the rotation score">Weight</th><th class="num">Score</th></tr></thead>
-            <tbody>${t.sps.map(p => `<tr data-pidx="${pushHomeRow(p)}">
-          <td>${playerNameCellHtml(p)}</td>
-              <td class="num">${Math.round(p.stats.ip || 0)}</td>
-              <td class="num">${p.teamWeight.toFixed(2)}</td>
-              <td class="num ${p.teamScore >= 0 ? 'good' : 'bad'}">${fmtSigned(p.teamScore)}</td>
-            </tr>`).join('')}</tbody>
-          </table>`
+        ? `<div class="rotation-players-wrapper">
+            <div class="table-container table-scroll">
+              <table class="roster-table">
+                ${homePlayerTheadHtml('<th class="mono">IP</th><th class="mono">Weight</th><th class="mono">Score</th>')}
+                <tbody>
+                  ${t.sps.map(p => homePlayerRowHtml(p, `
+                    <td class="mono">${Math.round(p.stats && p.stats.ip || 0)}</td>
+                    <td class="mono">${p.teamWeight != null ? p.teamWeight.toFixed(2) : '—'}</td>
+                    <td class="mono font-bold ${p.teamScore >= 0 ? 'surplus-pos' : 'surplus-neg'}">${p.teamScore != null ? fmtSigned(p.teamScore) : '—'}</td>
+                  `)).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>`
         : '';
+
       return `
-      <div class="pick-row rotation-team-row" data-team-toggle="${t.abbr}">
-        <span class="preview-row-name">${expanded ? '▾' : '▸'} ${teamLogoImg(t.abbr, 15)}${t.name} <span class="preview-row-tag">${t.abbr} · avg FIP ${t.avgFip != null ? t.avgFip.toFixed(2) : '—'} · ${Math.round(t.totalIp)} IP · ${fmtMoney(t.payroll)} payroll</span></span>
-        <span class="preview-row-val ${t.avgScore >= 0 ? 'good' : 'bad'}">${fmtSigned(t.avgScore)}</span>
-      </div>
-      ${playersHtml}`;
+      <div class="rotation-team-card${expanded ? ' expanded' : ''}" style="border-left: 4px solid ${primaryColor};">
+        <div class="rotation-team-header" data-team-toggle="${t.abbr}" tabindex="0" role="button" aria-expanded="${expanded}">
+          <div class="team-hero-title-row rotation-hero-row">
+            <span class="rotation-toggle-chevron" aria-hidden="true">${expanded ? '▾' : '▸'}</span>
+            ${teamLogoImg(t.abbr, 51).replace('class="team-logo"', 'class="team-hero-logo rotation-team-logo"')}
+            <div class="team-hero-text-group">
+              <h3 class="team-hero-heading rotation-team-title">${t.name}</h3>
+              <div class="rotation-team-subgroup">
+                <span class="team-hero-subtext">${t.division || (t.league + ' ' + t.abbr)}</span>
+                <a href="#/team/${slug}" class="rotation-team-link" onclick="event.stopPropagation()">Team page →</a>
+              </div>
+            </div>
+            <div class="macro-metric-grid rotation-metric-grid">
+              <div class="macro-metric-card">
+                <span class="macro-metric-label">Rotation Score</span>
+                <span class="macro-metric-value ${t.avgScore >= 0 ? 'macro-value-positive' : 'macro-value-negative'}">${fmtSigned(t.avgScore)} <span class="rotation-rank-tag">-[#${t.leagueRank} in ${t.league} / #${t.mlbRank} in MLB]</span></span>
+              </div>
+              <div class="macro-metric-card">
+                <span class="macro-metric-label">Rotation Payroll</span>
+                <span class="macro-metric-value">${fmtMoney(t.payroll)}</span>
+              </div>
+              <div class="macro-metric-card">
+                <span class="macro-metric-label">Avg FIP</span>
+                <span class="macro-metric-value">${t.avgFip != null ? t.avgFip.toFixed(2) : '—'}</span>
+              </div>
+              <div class="macro-metric-card">
+                <span class="macro-metric-label">Total IP</span>
+                <span class="macro-metric-value">${Math.round(t.totalIp)} IP</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        ${playersHtml}
+      </div>`;
     };
+
     const bestRows = best.length ? best.map(row).join('') : '<div class="empty">No rotations with 2+ starters in this build.</div>';
     const worstRows = worst.length ? worst.map(row).join('') : '<div class="empty">No rotations with 2+ starters in this build.</div>';
+
     document.getElementById('explore-rotations').innerHTML = `
       <div class="preview-head">
         <h3>Best / Worst Rotations <span class="preview-sub">each team's top 5 SP by IP — innings-weighted avg value score</span></h3>
       </div>
       <div class="explore-subhead good">Best — highest avg score</div>
-      ${bestRows}
-      <div class="explore-subhead bad">Worst — lowest avg score</div>
-      ${worstRows}`;
-  }
-
-  // Long-Term Contract Value Locks: real per-year projected talent (2027-
-  // 2029, from projectedFutureYears -- see compute_batter/pitcher_
-  // projections_future_years in projections.py) weighed against real
-  // guaranteed contract pay in that same year, not this year's AAV
-  // multiplied out. Uses the exact same live, adjustable composite weights
-  // (BATTER_STAT_CONFIG/PITCHER_STAT_CONFIG) as the rest of the site, just
-  // applied to future-year projected stats instead of this season's real
-  // ones -- reacts to the Weights tab the same way everything else does.
-  // Missing composite inputs (no multi-year projection exists yet for
-  // fielding or wRC+) simply drop out of that year's weighted sum rather
-  // than blocking it, the same graceful-partial-data handling recomputeAll()
-  // already uses everywhere else.
-  function futureCompositePct(p, targetSeason) {
-    const future = p.projectedFutureYears && p.projectedFutureYears[String(targetSeason)];
-    if (!future) return null;
-    const enriched = { ...future };
-    if (p.isBatter && enriched.k_rate != null && enriched.bb_rate != null) {
-      enriched.k_minus_bb = enriched.k_rate - enriched.bb_rate;
-    }
-    const cfg = p.isBatter ? BATTER_STAT_CONFIG : PITCHER_STAT_CONFIG;
-    const w = p.isBatter ? battingWeights : pitchingWeights;
-    const posStats = positionStats[p.position] || {};
-    let total = 0, weightSqSum = 0, any = false;
-    cfg.forEach(s => {
-      const val = enriched[s.key];
-      const ps = posStats[s.key];
-      if (val != null && ps && ps.std > 0) {
-        const rawZ = (val - ps.mean) / ps.std;
-        const z = s.higherBetter ? rawZ : -rawZ;
-        total += z * w[s.key];
-        weightSqSum += w[s.key] * w[s.key];
-        any = true;
-      }
-    });
-    return any && weightSqSum > 0 ? normalCdf(total / Math.sqrt(weightSqSum)) * 100 : null;
-  }
-
-  // Same true-market comp pool the main Recommended Pay figure uses
-  // (non-pre-arb, non-arbitration-eligible), rebuilt fresh each render so it
-  // always reflects the live compPct values recomputeAll() just set.
-  function trueMarketPools() {
-    return {
-      batter: marketPlayers.filter(p => p.isBatter && !isArbEligible(p)),
-      SP: marketPlayers.filter(p => p.position === 'SP' && !isArbEligible(p)),
-      RP: marketPlayers.filter(p => p.position === 'RP' && !isArbEligible(p)),
-    };
-  }
-
-  // Real 3-year lock value: only players with a REAL, GUARANTEED (not
-  // arbitration, not an option year, not a placeholder) contract salary in
-  // all 3 of the next seasons qualify -- "contract only, no arbitration" per
-  // the feature's own name. Each year's projected performance is converted
-  // to a real dollar figure via the same adaptiveCompMedian the rest of the
-  // site uses, then compared against that year's real guaranteed salary.
-  function threeYearLockValue(p, pools) {
-    if (!p.projectedFutureYears) return null;
-    const c = contracts[p.id];
-    if (!c || !c.years) return null;
-    const pool = pools[p.isBatter ? 'batter' : p.position];
-    if (!pool || pool.length === 0) return null;
-
-    const perYear = [];
-    let totalSurplus = 0, totalValue = 0, totalPay = 0;
-    for (let offset = 1; offset <= 3; offset++) {
-      const yr = CURRENT_SEASON + offset;
-      const contractYear = c.years.find(y => y.season === yr && y.type === 'GUARANTEED' && y.salary != null);
-      if (!contractYear) return null;
-      const pct = futureCompositePct(p, yr);
-      if (pct == null) return null;
-      const value = adaptiveCompMedian(pool, pct, 'aav', 'compPct');
-      if (value == null) return null;
-      const surplus = value - contractYear.salary;
-      perYear.push({ season: yr, pct, value, pay: contractYear.salary, surplus });
-      totalSurplus += surplus;
-      totalValue += value;
-      totalPay += contractYear.salary;
-    }
-    return { perYear, totalSurplus, avgValue: totalValue / 3, avgPay: totalPay / 3 };
-  }
-
-  // Every player (batter or pitcher) with a REAL, GUARANTEED contract salary in
-  // all 3 of the next seasons, sorted by 3-year surplus. Shared by the home
-  // Locks card preview and the Long-Term Locks sub-page so both always show
-  // exactly the same pool.
-  function lockCandidates() {
-    const pools = trueMarketPools();
-    return marketPlayers
-      .map(p => ({ p, lock: threeYearLockValue(p, pools) }))
-      .filter(x => x.lock != null)
-      .sort((a, b) => b.lock.totalSurplus - a.lock.totalSurplus);
-  }
-
-  function lockRowCells(p, lock) {
-    const firstYear = lock.perYear[0];
-    const keyStat = p.projectedFutureYears[String(firstYear.season)][p.isBatter ? 'xwoba' : 'xera'];
-    const keyType = p.isBatter ? 'avg3' : 'rate2';
-    return `
-      <td>${playerNameCellHtml(p)}</td>
-      <td class="num">${fmtMoney(lock.avgPay)}</td>
-      <td class="num">${fmtStatValue(keyType, keyStat)}</td>
-      <td class="num">${fmtMoney(lock.avgValue)}</td>
-      <td class="num ${lock.totalSurplus >= 0 ? 'good' : 'bad'}" data-count="${lock.totalSurplus}" data-count-fmt="signedM">${fmtSigned(lock.totalSurplus / 1e6)}M</td>`;
-  }
-
-  const LOCK_EMPTY_ROW = '<tr><td colspan="5"><div class="empty">No players with 3 full guaranteed contract years remaining (2027-2029) in this build.</div></td></tr>';
-
-  function renderLocks() {
-    const candidates = lockCandidates().slice(0, 10);
-    const rows = candidates.length ? candidates.map(({ p, lock }) =>
-      `<tr class="row-toggle" data-pidx="${pushHomeRow(p)}">${lockRowCells(p, lock)}</tr>`
-    ).join('') : LOCK_EMPTY_ROW;
-    document.getElementById('locks-card').innerHTML = `
-      <div class="preview-head">
-        <h3>Long-Term Contract Value Locks <span class="preview-sub">real 3-year projections (2027-2029) vs. real guaranteed pay — contract years only, no arbitration</span></h3>
+      <div class="rotation-team-list">
+        ${bestRows}
       </div>
-      <div class="table-scroll">
-        <table class="locks-table">
-          <thead>
-            <tr>
-              <th>Player</th>
-              <th class="num">Avg Annual Pay</th>
-              <th class="num">${CURRENT_SEASON + 1} xwOBA / xERA</th>
-              <th class="num">Avg Annual Value</th>
-              <th class="num">3-Yr Surplus</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-      <div class="card-actions"><button class="preview-link show-more" data-tab="locks">Show More Locks →</button></div>`;
+      <div class="explore-subhead bad" style="margin-top: 1.5rem;">Worst — lowest avg score</div>
+      <div class="rotation-team-list">
+        ${worstRows}
+      </div>`;
   }
-
-  // --- Long-Term Locks sub-page: the full lock pool (all batters + pitchers),
-  // separate from league-filtering. Shares lockCandidates()/lockRowCells()
-  // with the home Locks card preview. ---
-  let locksSort = { key: 'surplus', dir: 'desc' };
-  let locksRowsCurrent = [];
-
-  function renderLocksSubpage() {
-    document.getElementById('locks-key-head').textContent = `${CURRENT_SEASON + 1} xwOBA / xERA`;
-    const q = document.getElementById('locks-search').value.trim().toLowerCase();
-    let rows = lockCandidates().filter(({ p }) => q === '' || matchesTeamQuery(p, q));
-    rows.sort((a, b) => {
-      const k = locksSort.key;
-      const lk = k === 'surplus' ? 'totalSurplus' : k;
-      const va = k === 'name' ? a.p.name : a.lock[lk];
-      const vb = k === 'name' ? b.p.name : b.lock[lk];
-      const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
-      return locksSort.dir === 'asc' ? cmp : -cmp;
-    });
-    document.getElementById('locks-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for their card' : '');
-    document.getElementById('locks-rows').innerHTML = rows.length ? rows.map(({ p, lock }, i) =>
-      `<tr class="row-toggle" data-idx="${i}"><span class="chevron">▸</span>${lockRowCells(p, lock)}</tr>`
-    ).join('') : LOCK_EMPTY_ROW;
-    locksRowsCurrent = rows;
-  }
-
-  document.getElementById('locks-rows').addEventListener('click', e => {
-    const row = e.target.closest('.row-toggle');
-    if (!row) return;
-    openPlayerCard(locksRowsCurrent[Number(row.dataset.idx)].p);
-  });
-  document.getElementById('locks-search').addEventListener('input', renderLocksSubpage);
-  document.querySelectorAll('#locks-view thead th[data-sort]').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.dataset.sort;
-      locksSort.dir = locksSort.key === key && locksSort.dir === 'desc' ? 'asc' : 'desc';
-      locksSort.key = key;
-      renderLocksSubpage();
-    });
-  });
 
   function renderHome() {
     homeRowsCurrent = [];
-    renderCarousel('nl');
-    renderCarousel('al');
+    renderCarousel('nl-bat');
+    renderCarousel('nl-pit');
+    renderCarousel('al-bat');
+    renderCarousel('al-pit');
     renderHotCold();
     renderBullpenOverview();
     renderRotations();
-    renderLocks();
   }
 

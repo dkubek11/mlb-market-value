@@ -9,8 +9,8 @@
   }
   buildWeightPanel('weight-panel-bat', BATTER_STAT_CONFIG, battingWeights);
   buildWeightPanel('weight-panel-pit', PITCHER_STAT_CONFIG, pitchingWeights);
-  document.getElementById('ew-r2-bat').textContent = Math.round(EW_MODEL.batter.cvR2 * 100) + '%';
-  document.getElementById('ew-r2-pit').textContent = Math.round(EW_MODEL.pitcher.cvR2 * 100) + '%';
+  document.getElementById('ew-r2-bat').textContent = EW_AVAILABLE ? Math.round(EW_MODEL.batter.cvR2 * 100) + '%' : 'n/a';
+  document.getElementById('ew-r2-pit').textContent = EW_AVAILABLE ? Math.round(EW_MODEL.pitcher.cvR2 * 100) + '%' : 'n/a';
 
   function wireWeightPanel(containerId, statConfig, weightsObj) {
     document.getElementById(containerId).addEventListener('input', e => {

@@ -34,19 +34,21 @@
     if (type === 'avg3') return (v < 0 ? '-' : '') + Math.abs(v).toFixed(3).replace(/^0\./, '.');
     if (type === 'rate2') return v.toFixed(2);
     if (type === 'pct1') return v.toFixed(1) + '%';
+    if (type === 'fracPct1') return (v * 100).toFixed(1) + '%';
     if (type === 'velo1') return v.toFixed(1);
     if (type === 'int') return Math.round(v).toString();
     return String(v);
   }
   function gradeFor(pct) {
-    if (pct >= 99) return 'S';
-    if (pct >= 90) return 'A+';
-    if (pct >= 80) return 'A';
-    if (pct >= 70) return 'B+';
-    if (pct >= 60) return 'B';
-    if (pct >= 50) return 'C+';
-    if (pct >= 40) return 'C';
-    if (pct >= 30) return 'D';
+    if (pct >= 95) return 'A+';
+    if (pct >= 90) return 'A';
+    if (pct >= 85) return 'A-';
+    if (pct >= 80) return 'B+';
+    if (pct >= 75) return 'B';
+    if (pct >= 70) return 'B-';
+    if (pct >= 65) return 'C+';
+    if (pct >= 55) return 'C';
+    if (pct >= 40) return 'D';
     return 'F';
   }
 
@@ -109,14 +111,13 @@
     return Math.max(1, Math.min(99, Math.round(normalCdf(z) * 100)));
   }
 
-  // Blue (poor) -> light gray (average) -> red (great), matching Baseball
-  // Savant's percentile-ranking convention -- deliberately not the site's
-  // own --good/--bad green/red pair, since this widget mirrors that specific
-  // reference visual rather than the site's usual under/overpaid coloring.
-  const PCTL_COLOR_STOPS = [[0, [91, 132, 196]], [50, [172, 172, 164]], [100, [201, 74, 61]]];
+  // Modern High-Contrast Palette: Electric Blue (#3b82f6) -> Clean Slate (#94a3b8) -> Vibrant Crimson Red (#ef4444),
+  // matching Baseball Savant / Statcast percentile-ranking convention.
+  const PCTL_COLOR_STOPS = [[0, [59, 130, 246]], [50, [148, 163, 184]], [100, [239, 68, 68]]];
   function percentileColor(pct) {
-    const [lo, hi] = pct <= 50 ? [PCTL_COLOR_STOPS[0], PCTL_COLOR_STOPS[1]] : [PCTL_COLOR_STOPS[1], PCTL_COLOR_STOPS[2]];
-    const t = (pct - lo[0]) / (hi[0] - lo[0]);
+    const clamped = Math.max(0, Math.min(100, pct));
+    const [lo, hi] = clamped <= 50 ? [PCTL_COLOR_STOPS[0], PCTL_COLOR_STOPS[1]] : [PCTL_COLOR_STOPS[1], PCTL_COLOR_STOPS[2]];
+    const t = (clamped - lo[0]) / (hi[0] - lo[0]);
     const rgb = lo[1].map((c, i) => Math.round(c + (hi[1][i] - c) * t));
     return `rgb(${rgb.join(',')})`;
   }
@@ -145,8 +146,6 @@
       <div class="pctl-legend"><span>&larr; Poor</span><span>Average</span><span>Great &rarr;</span></div>
       ${rows}`;
   }
-
-  const CURRENT_SEASON = 2026;
 
   // Still team-controlled (pre-arb/arb-eligible) players reach free agency
   // for the first time at 6.000 years of service -- serviceYears may be the
@@ -229,7 +228,7 @@
     cfg.forEach(s => {
       const val = entry.stats[s.key];
       const ps = seasonStats[s.key];
-      if (val != null && ps && ps.std > 0) {
+      if (val != null && ps && ps.std > 0 && w[s.key] > 0) {
         const rawZ = (val - ps.mean) / ps.std;
         const z = s.higherBetter ? rawZ : -rawZ;
         total += z * w[s.key];
@@ -237,9 +236,16 @@
         any = true;
       }
     });
-    if (!any || weightSqSum === 0) return null;
-    const pct = normalCdf(total / Math.sqrt(weightSqSum)) * 100;
-    return { rawScore: total, pct, grade: gradeFor(pct) };
+    if (any && weightSqSum > 0) {
+      const pct = normalCdf(total / Math.sqrt(weightSqSum)) * 100;
+      return { rawScore: total, pct, grade: gradeFor(pct) };
+    }
+    // Fall back to arbitration / traditional composite which always has valid weights
+    const arbPct = computeHistoricalArbGrade(entry, isBatter);
+    if (arbPct != null) {
+      return { rawScore: 0, pct: arbPct, grade: gradeFor(arbPct) };
+    }
+    return null;
   }
 
   // Same as computeHistoricalGrade, but on the traditional-stat composite
@@ -267,204 +273,486 @@
     return normalCdf(total / Math.sqrt(weightSqSum)) * 100;
   }
 
-  const HISTORY_BATTER_COLS = BATTER_STATS.filter(s => ['ba', 'hr', 'xwoba'].includes(s.key));
-  const HISTORY_PITCHER_COLS = PITCHER_STATS.filter(s => ['era', 'xera', 'k_9'].includes(s.key));
+  function gradeBadgeHtml(grade) {
+    if (!grade || grade === '—') return '—';
+    let cls = 'grd-c';
+    if (grade === 'S' || grade === 'A+' || grade === 'A') cls = 'grd-a';
+    else if (grade === 'A-') cls = 'grd-a-minus';
+    else if (grade === 'B+' || grade === 'B') cls = 'grd-b';
+    else if (grade === 'B-') cls = 'grd-b-minus';
+    else if (grade === 'C+' || grade === 'C') cls = 'grd-c';
+    else cls = 'grd-d';
+    return `<span class="history-grade-pill ${cls}">${grade}</span>`;
+  }
 
-  function historySectionHtml(record) {
-    if (!record.history || !record.history.length) return '';
-    const cols = record.isBatter ? HISTORY_BATTER_COLS : HISTORY_PITCHER_COLS;
-    const headCells = cols.map(c => `<th class="num">${c.label}</th>`).join('');
-    const rows = record.history.map(entry => {
-      const grade = computeHistoricalGrade(entry, record.isBatter);
-      const statCells = cols.map(c => `<td class="num">${fmtStatValue(c.type, entry.stats[c.key])}</td>`).join('');
-      const pctCell = grade != null ? `${grade.pct.toFixed(1)}` : '—';
-      const gradeCell = grade != null ? grade.grade : '—';
-      return `<tr>
-        <td>${entry.season}</td>
-        <td><span class="pos-pill">${entry.position}</span></td>
-        ${statCells}
-        <td class="num">${pctCell}</td>
-        <td class="num">${gradeCell}</td>
-      </tr>`;
-    }).join('');
+  function renderScoreCard(record, surplus, fairMarket, contractAav) {
+    const scoreVal = record.score != null ? record.score : (record.surplus ? (record.surplus / 1e6) : 0);
+    const isPos = scoreVal >= 0;
+    const scoreDisplay = (isPos ? '+' : '') + scoreVal.toFixed(1);
+    const scoreCls = isPos ? 'score-green' : 'score-red';
+    
+    // Center-origin bar
+    const pctFromCenter = Math.min(50, Math.max(3, (Math.abs(scoreVal) / 40) * 50));
+    const barStyle = isPos
+      ? `left: 50%; width: ${pctFromCenter}%; background: #00e676;`
+      : `right: 50%; width: ${pctFromCenter}%; background: #ef4444;`;
+
+    const prodPctl = record.compPct != null ? Math.round(record.compPct) : 50;
+    const payPctl = record.salPct != null ? Math.round(record.salPct) : 50;
+
     return `
-      <div class="card-section-title">5-Year History</div>
-      <div class="history-table-wrap">
-        <table class="history-table">
-          <thead><tr><th>Yr</th><th>Pos</th>${headCells}<th class="num">Perf%</th><th class="num">Grd</th></tr></thead>
-          <tbody>${rows}</tbody>
+      <div class="player-card-box">
+        <div class="box-head-row">
+          <span class="box-title">SCORE</span>
+        </div>
+        <div class="score-bar-row">
+          <div class="score-bar-track">
+            <div class="score-center-line"></div>
+            <div class="score-bar-fill" style="${barStyle}"></div>
+          </div>
+          <span class="score-track-val mono ${scoreCls}">${scoreDisplay}</span>
+        </div>
+        <div class="score-metrics-list">
+          <div class="score-metric-row">
+            <span class="score-metric-label">On-Field Production</span>
+            <span class="score-metric-val mono">${prodPctl}th Percentile</span>
+          </div>
+          <div class="score-metric-row">
+            <span class="score-metric-label">Positional Pay</span>
+            <span class="score-metric-val mono">${payPctl}th Percentile</span>
+          </div>
+          <div class="score-metric-row">
+            <span class="score-metric-label">Fair Market Value</span>
+            <span class="score-metric-val mono">${fmtMoney(fairMarket)}</span>
+          </div>
+          <div class="score-metric-row">
+            <span class="score-metric-label">Contract AAV</span>
+            <span class="score-metric-val mono">${fmtMoney(contractAav)}</span>
+          </div>
+          <div class="score-divider"></div>
+          <div class="score-metric-row net-surplus-row">
+            <span class="score-metric-label">Net Surplus</span>
+            <span class="score-metric-val mono ${surplus >= 0 ? 'surplus-green' : 'surplus-red'}">
+              ${surplus >= 0 ? '+' : '-'}${fmtMoney(Math.abs(surplus))}
+            </span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderContractStatusCard(record) {
+    const startYr = CURRENT_SEASON;
+    const endYr = startYr + 4;
+    const c = contracts[record.id];
+    const rows = [];
+    const svc = record.serviceYears || (record.isPreArb ? 1.0 : 6.0);
+
+    for (let i = 0; i < 5; i++) {
+      const yr = startYr + i;
+      const yEntry = c && c.years ? c.years.find(y => Number(y.season) === yr) : null;
+      let status = 'Free Agent';
+      let aav = '—';
+
+      if (yEntry && yEntry.salary != null && yEntry.salary > 0) {
+        status = yEntry.type && yEntry.type.includes('OPTION') ? 'Club Option' : 'Under Contract';
+        aav = fmtMoney(yEntry.aav || yEntry.salary);
+      } else if (yr === CURRENT_SEASON && record.salary) {
+        status = 'Under Contract';
+        aav = fmtMoney(record.salary);
+      } else if (record.contractType === 'Extension' && i === 1 && record.salary) {
+        status = 'Under Contract';
+        aav = fmtMoney(record.salary);
+      } else if (record.isPreArb || (svc + i) < 6.0) {
+        const projSvc = svc + i;
+        if (projSvc < 3.0) status = 'Pre-Arb';
+        else if (projSvc < 4.0) status = 'Arb 1';
+        else if (projSvc < 5.0) status = 'Arb 2';
+        else status = 'Arb 3';
+        aav = '—';
+      } else {
+        status = 'Free Agent';
+        aav = '—';
+      }
+      const isCurrent = yr === CURRENT_SEASON;
+      rows.push(`
+        <tr class="contract-status-row ${isCurrent ? 'current-active-row' : ''}">
+          <td class="mono font-bold">${yr}</td>
+          <td>${status}</td>
+          <td class="mono font-bold text-right">${aav}</td>
+        </tr>
+      `);
+    }
+
+    return `
+      <div class="player-card-box">
+        <div class="box-head-row">
+          <span class="box-title">CONTRACT STATUS</span>
+        </div>
+        <div class="box-subtitle">Next 5 years · ${startYr}–${endYr}</div>
+        <table class="card-status-table">
+          <thead>
+            <tr>
+              <th>YEAR</th>
+              <th>STATUS</th>
+              <th class="text-right">AAV</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.join('')}
+          </tbody>
         </table>
       </div>
-      <div class="history-note">Performance vs. that season's position peers only (est. percentile) — no salary history exists for past seasons, so there's no historical Score.</div>
+    `;
+  }
+
+  function renderPerformanceGaugesCard(record) {
+    const isBat = record.isBatter;
+    const title = isBat ? 'BATTING' : 'PITCHING';
+
+    const statDefs = isBat ? [
+      { key: 'bwar', label: 'BWAR', higherBetter: true, type: 'velo1' },
+      { key: 'ba', label: 'AVG', higherBetter: true, type: 'avg3' },
+      { key: 'obp', label: 'OBP', higherBetter: true, type: 'avg3' },
+      { key: 'slg', label: 'SLG', higherBetter: true, type: 'avg3' },
+      { key: 'xwoba', altKey: 'wrc_plus', label: 'XWOBA', higherBetter: true, type: 'avg3', altType: 'int' },
+      { key: 'hr', label: 'HR', higherBetter: true, type: 'int' },
+      { key: 'sb', label: 'SB', higherBetter: true, type: 'int' },
+    ] : [
+      { key: 'bwar', label: 'FWAR', higherBetter: true, type: 'velo1' },
+      { key: 'era', label: 'ERA', higherBetter: false, type: 'rate2' },
+      { key: 'fip', label: 'FIP', higherBetter: false, type: 'rate2' },
+      { key: 'whip', label: 'WHIP', higherBetter: false, type: 'rate2' },
+      { key: 'k_rate', altKey: 'k_9', label: 'K%', higherBetter: true, type: 'fracPct1', altType: 'rate2' },
+      { key: 'bb_rate', altKey: 'bb_9', label: 'BB%', higherBetter: false, type: 'fracPct1', altType: 'rate2' },
+      { key: 'ip', label: 'IP', higherBetter: true, type: 'int' },
+    ];
+
+    const gaugeRows = statDefs.map(s => {
+      let rawVal = record.stats[s.key];
+      let type = s.type;
+      let pctl = statPercentile(record, s.key, s.higherBetter);
+      if (rawVal == null && s.altKey) {
+        rawVal = record.stats[s.altKey];
+        type = s.altType;
+        pctl = statPercentile(record, s.altKey, s.higherBetter);
+      }
+      if (pctl == null) pctl = Math.round(record.compPct || 50);
+      const valText = fmtStatValue(type, rawVal);
+      const barColor = percentileColor(pctl);
+
+      return `
+        <div class="gauge-slider-row">
+          <span class="gauge-label">${s.label}</span>
+          <div class="gauge-track">
+            <div class="gauge-fill" style="width: ${pctl}%; background: ${barColor};">
+              <span class="gauge-bubble" style="background: ${barColor};">${pctl}</span>
+            </div>
+          </div>
+          <span class="gauge-val mono">${valText}</span>
+        </div>
+      `;
+    }).join('');
+
+    // Regression Callout
+    const arrow = regressionArrow(record);
+    let regressionBox = '';
+    if (arrow) {
+      const isOutperforming = arrow.cls === 'good';
+      const sym = isOutperforming ? '▼' : '▲';
+      const symCls = isOutperforming ? 'reg-red' : 'reg-green';
+      const statName = arrow.sig.label;
+      const actualStr = fmtStatValue(arrow.sig.type, arrow.sig.actual);
+      const projStr = fmtStatValue(arrow.sig.type, arrow.sig.projected);
+      const desc = isOutperforming
+        ? 'Outperforming his peripherals, regression likely.'
+        : 'Underperforming his peripherals, positive regression likely.';
+
+      regressionBox = `
+        <div class="regression-callout-box">
+          <div class="regression-left">
+            <div class="regression-headline ${symCls}">
+              <span class="regression-arrow-sym">${sym}</span> ${actualStr} ${statName}
+            </div>
+            <div class="regression-subline mono">vs. ${projStr} projected</div>
+          </div>
+          <div class="regression-right">${desc}</div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="player-card-box">
+        <div class="box-head-row">
+          <span class="box-title">${title}</span>
+        </div>
+        <div class="gauge-legend-row">
+          <span class="legend-poor">POOR</span>
+          <span class="legend-avg">AVERAGE</span>
+          <span class="legend-great">GREAT</span>
+        </div>
+        <div class="gauge-sliders-wrap">
+          ${gaugeRows}
+        </div>
+        ${regressionBox}
+      </div>
+    `;
+  }
+
+  function renderSalaryPeersCard(record, surplus) {
+    const targetSal = record.salary || record.aav || 0;
+    const isPre = !!record.isPreArb;
+    const posLabel = record.position;
+
+    let pool = allPlayers.filter(p => {
+      if (p.isBatter !== record.isBatter) return false;
+      if (record.position === 'SP' || record.position === 'RP') {
+        return p.position === record.position;
+      }
+      return p.position === record.position;
+    });
+
+    let tol = isPre ? 350000 : 2500000;
+    let peers = pool.filter(p => Math.abs((p.salary || 0) - targetSal) <= tol);
+    if (peers.length < 5) {
+      tol = isPre ? 600000 : 4500000;
+      peers = pool.filter(p => Math.abs((p.salary || 0) - targetSal) <= tol);
+    }
+    if (!peers.some(p => p.id === record.id)) peers.push(record);
+    peers.sort((a, b) => (b.compPct || 0) - (a.compPct || 0));
+
+    const totalPeers = peers.length;
+    const rank = peers.findIndex(p => p.id === record.id) + 1;
+
+    let startIdx = 0;
+    if (totalPeers > 6) {
+      startIdx = Math.max(0, Math.min(totalPeers - 6, rank - 3));
+    }
+    const displayPeers = peers.slice(startIdx, startIdx + 6);
+
+    const peerRows = displayPeers.map((p, idx) => {
+      const peerRank = startIdx + idx + 1;
+      const isActive = p.id === record.id;
+      const peerSurplus = playerSurplus(p);
+      const pctl = Math.round(p.compPct || 0);
+
+      return `
+        <tr class="peer-row ${isActive ? 'active-peer-row' : ''}">
+          <td class="mono font-bold peer-rank-col">${peerRank}</td>
+          <td class="peer-team-col ${isActive ? 'team-active-gold' : ''}">${p.team}</td>
+          <td class="peer-name-col ${isActive ? 'name-active-bold' : ''}">${p.name}</td>
+          <td class="mono font-bold">${fmtMoney(p.salary || p.aav)}</td>
+          <td class="mono font-bold ${isActive ? 'perf-active-gold' : ''}">${pctl}th</td>
+          <td class="mono font-bold ${peerSurplus >= 0 ? 'surplus-green' : 'surplus-red'}">
+            ${peerSurplus >= 0 ? '+' : '-'}${fmtMoney(Math.abs(peerSurplus))}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    return `
+      <div class="player-card-box">
+        <div class="box-head-row salary-peers-head">
+          <span class="box-title">POSITION RANK AMONG SALARY PEERS - ${posLabel}</span>
+          <div class="peer-rank-badge">
+            <span class="rank-num">#${rank}</span>
+            <span class="rank-total">of ${totalPeers}</span>
+          </div>
+        </div>
+        <table class="card-peers-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>TEAM</th>
+              <th>PLAYER</th>
+              <th>AAV</th>
+              <th>PERF</th>
+              <th>SURPLUS</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${peerRows}
+          </tbody>
+        </table>
+        <div class="card-box-footer-note">
+          Benchmarked against salary peers within ±$${(tol / 1e6).toFixed(1)}M of ${fmtMoney(targetSal)} AAV, ranked by on-field production.
+        </div>
+      </div>
+    `;
+  }
+
+  function renderFiveYearHistoryCard(record) {
+    const history = record.history || [];
+    if (!history.length) return '';
+
+    const isBat = record.isBatter;
+    const colHeaders = isBat ? `
+      <th>YR</th>
+      <th>POS</th>
+      <th>HR</th>
+      <th>BA</th>
+      <th>RBI</th>
+      <th>PERF%</th>
+      <th>GRD</th>
+    ` : `
+      <th>YR</th>
+      <th>POS</th>
+      <th>W</th>
+      <th>ERA</th>
+      <th>K</th>
+      <th>PERF%</th>
+      <th>GRD</th>
+    `;
+
+    const rows = history.slice(0, 5).map(entry => {
+      const grade = computeHistoricalGrade(entry, isBat);
+      const yr = entry.season;
+      const pos = entry.position || record.position;
+      const pctStr = grade != null ? grade.pct.toFixed(1) : '—';
+      const grdBadge = grade != null ? gradeBadgeHtml(grade.grade) : '—';
+
+      let statCols = '';
+      if (isBat) {
+        const hr = entry.stats.hr != null ? Math.round(entry.stats.hr) : '—';
+        const ba = entry.stats.ba != null ? fmtStatValue('avg3', entry.stats.ba) : '—';
+        const rbi = entry.stats.rbi != null ? Math.round(entry.stats.rbi) : '—';
+        statCols = `
+          <td class="mono font-bold">${hr}</td>
+          <td class="mono font-bold">${ba}</td>
+          <td class="mono font-bold">${rbi}</td>
+        `;
+      } else {
+        const w = entry.stats.wins != null ? Math.round(entry.stats.wins) : (entry.stats.w != null ? entry.stats.w : '—');
+        const era = entry.stats.era != null ? entry.stats.era.toFixed(2) : '—';
+        let k = '—';
+        if (entry.stats.strikeouts != null) k = Math.round(entry.stats.strikeouts);
+        else if (entry.stats.k != null) k = Math.round(entry.stats.k);
+        else if (entry.stats.so != null) k = Math.round(entry.stats.so);
+        else if (entry.stats.k_9 && entry.stats.ip) k = Math.round(entry.stats.k_9 * entry.stats.ip / 9);
+        statCols = `
+          <td class="mono font-bold">${w}</td>
+          <td class="mono font-bold">${era}</td>
+          <td class="mono font-bold">${k}</td>
+        `;
+      }
+
+      return `
+        <tr class="history-data-row">
+          <td class="mono font-bold">${yr}</td>
+          <td class="mono font-bold">${pos}</td>
+          ${statCols}
+          <td class="mono font-bold">${pctStr}</td>
+          <td>${grdBadge}</td>
+        </tr>
+      `;
+    }).join('');
+
+    return `
+      <div class="player-card-box">
+        <div class="box-head-row">
+          <span class="box-title">5-YEAR HISTORY</span>
+        </div>
+        <table class="card-history-table">
+          <thead>
+            <tr>
+              ${colHeaders}
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+        <div class="card-box-footer-note">
+          Performance vs. that season's position peers only (estimated percentile). Past seasons have no salary history, so there's no historical Score.
+        </div>
+      </div>
     `;
   }
 
   function openPlayerCard(record) {
     if (!record) return;
     const colors = teamColors[record.team] || ['#3a4a42', '#1a231e'];
-    const grade = gradeFor(record.compPct);
-    // sprint_speed splits out into its own "Running" section (Statcast-style
-    // layout) rather than sitting inside the main Batting percentile list.
-    const statSet = record.isBatter ? BATTER_STATS.filter(s => s.key !== 'sprint_speed') : PITCHER_STATS;
-    const runningStats = record.isBatter ? BATTER_STATS.filter(s => s.key === 'sprint_speed') : [];
+    const tier = tierForPlayer(record);
+    const contract = contractLabel(record);
+    const surplus = playerSurplus(record);
+    const fairMarket = playerMarketValue(record);
+    const contractAav = record.aav || record.salary || 0;
+    const teamFullName = (teamNameByAbbr[record.team] || record.team).toUpperCase();
 
-    const fieldingHtml = record.isBatter ? percentileSection('Fielding', FIELDING_STATS, record) : '';
-    const runningHtml = percentileSection('Running', runningStats, record);
+    const tierLabelMap = {
+      a: 'Tier A/Great',
+      b: 'Tier B/Good',
+      c: 'Tier C/Avg',
+      d: 'Tier D/Below Avg',
+      f: 'Tier F/Poor',
+      great: 'Tier A/Great',
+      good: 'Tier B/Good',
+      avg: 'Tier C/Avg',
+      below: 'Tier D/Below Avg',
+      poor: 'Tier F/Poor'
+    };
+    const tierBadgeText = tierLabelMap[tier.cls] || `Tier ${tier.label}`;
 
-    let regressionHtml = '';
-    const arrow = regressionArrow(record);
-    if (arrow) {
-      const word = arrow.cls === 'good' ? 'overperforming, regression likely' : 'underperforming, positive regression likely';
-      const compsNote = record.nComps ? ` · ${record.nComps} historical comps` : '';
-      regressionHtml = `<div class="regression-line ${arrow.cls}"><span class="regression-arrow">${arrow.symbol}</span> ${fmtStatValue(arrow.sig.type, arrow.sig.actual)} ${arrow.sig.label} vs. ${fmtStatValue(arrow.sig.type, arrow.sig.projected)} projected (${word})${compsNote}</div>`;
-    }
-
-    // Computed here (not just below, where it already existed) because the
-    // Score box's "Recommended pay" line needs it too: recommendedSalary
-    // blends heavily toward projectedPct for arb-eligible players
-    // (ARB_PROJECTION_BLEND=0.65), so for someone actually reaching free
-    // agency soon it's really a forward-looking number wearing a
-    // present-tense label -- misleading when it sits right above a
-    // percentile-performance line showing them well below where they're
-    // paid (that combination reads as "underpaid" when blended so heavily
-    // toward next year's projection, it isn't saying that at all). The
-    // Outlook section below already shows that same forward-looking
-    // concept under its correct label (Projected Free Agent Value), so
-    // this just avoids showing a second, confusingly-similar number under
-    // a label that implies "pay them this right now."
-    const pendingFA = isNearingFreeAgency(record);
-    const poolLabel = record.isBatter ? 'all hitters' : (record.position === 'SP' ? 'starters' : 'relievers');
-    const bwarNow = record.stats.bwar != null ? record.stats.bwar : 0;
-    const predNote = record.expectedWar != null
-      ? `<div class="card-value-note">Process stats say <strong>${record.expectedWar.toFixed(1)} bWAR</strong> was expected (${fmtSigned(record.warGap)} actual vs. expected) · Predicted Score <span class="${record.predictedScore >= 0 ? 'good' : 'bad'}">${fmtSigned(record.predictedScore)}</span></div>`
-      : '';
-    let valueHtml = '';
-    if (!record.isPreArb) {
-      const recPayNote = (record.recommendedSalary != null && !pendingFA)
-        ? `<div class="card-value-note">Recommended pay: <strong>${fmtMoney(record.recommendedSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.paySurplus / 1e6)}M)</div>`
-        : '';
-      const arbFloorNote = record.expectedArbFloored
-        ? ` This is the CBA's max-cut floor (can't fall below 80% of last year's real pay, or 70% of two years ago), not a pure comp -- the stat-based case alone would have landed lower.`
-        : '';
-      const arbNote = (isArbEligible(record) && record.expectedArbSalary != null)
-        ? `<div class="card-value-note">Arbitration-eligible — ${arbYearLabel(record)}. Comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-adjusted to ~${Math.round(arbServicePercent(record) * 100)}%: expected <strong>${fmtMoney(record.expectedArbSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.arbSurplus / 1e6)}M).${accomplishmentsNote(record)}${arbFloorNote}</div>`
-        : '';
-      valueHtml = `<div class="card-value-box">
-        <div class="card-stat-label">Score</div>
-        ${valueBar(record.score, 100)}
-        <div class="card-value-note">Produced <strong>${bwarNow.toFixed(1)} bWAR</strong> — ${record.compPct.toFixed(1)}th percentile among ${poolLabel}, paid at the ${record.salPct.toFixed(1)}th percentile for ${record.position}</div>
-        ${predNote}
-        ${recPayNote}
-        ${arbNote}
-      </div>`;
-    } else if (record.projectedSalary != null) {
-      valueHtml = `<div class="card-value-box">
-        <div class="card-stat-label">Projected Arbitration Value</div>
-        <div class="card-projected">${fmtMoney(record.projectedSalary)}</div>
-        <div class="card-value-note">Comped against real Arb-1-tier peers on traditional stats (AVG/HR/RBI/wins/saves/etc.) — the stats an arbitration panel actually looks at, not advanced metrics. Assumes the standard track (~40%); Super Two eligibility (a 4th, earlier arb year) can't be predicted before a player actually reaches the tracker.${accomplishmentsNote(record)}</div>
-        ${predNote}
-      </div>`;
-    }
-
-    let outlookHtml = '';
-    const teamControlled = record.isPreArb || isArbEligible(record);
-    // A rookie with, say, 0.128 years of service isn't one tier away from
-    // arbitration next season -- they're still years away (Super Two's
-    // earliest real cutoff is ~2.0 years; standard arb needs 3.0). Showing
-    // an "arbitration value" for a season the player legally can't be in
-    // arbitration for is actively misleading, not just imprecise -- the
-    // existing "Projected Arbitration Value" box above already covers
-    // "whenever they eventually reach Arb-1" for every pre-arb player, so
-    // there's nothing new to say here until that's plausibly close.
-    const arbPlausibleNextSeason = isArbEligible(record) || (record.serviceYears || 0) + 1 >= 2.0;
-    if (teamControlled && !pendingFA && arbPlausibleNextSeason) {
-      // Still team-controlled and not reaching free agency next season --
-      // show what arbitration/pre-arb pay actually looks like one tier out,
-      // not an open-market figure this player can't legally be paid yet.
-      if (record.projectedArbSalary != null) {
-        const tierNote = !record.serviceYearsExact
-          ? ` This estimate's arbitration tier is based on an estimated (not confirmed) service-time figure.`
-          : '';
-        const floorNote = record.projectedArbFloored
-          ? (record.projectedArbFloorIsEmpirical
-              ? ` This reflects a real-world floor, not the comp above — returning arb players almost never see a cut (only ~3% of real year-over-year settlements do, and even the worst 10% still got at least a ${(ARB_RAISE_FLOOR_PCT * 100).toFixed(0)}% raise); the comp alone would have landed lower.`
-              : ` This is the CBA's max-cut floor (can't fall below 80% of this year's real pay, or 70% of last year's), not the comp above -- the comp alone would have landed lower.`)
-          : '';
-        const baseNote = record.projectedArbRaisePct != null
-          ? `Still under team control next season — projects a <strong>${fmtSigned(record.projectedArbRaisePct * 100)}%</strong> change off this year's actual pay, matched against real arb-to-arb raises other players got at a similar performance level (2016-2025, excl. 2020), not a cross-year dollar comp.`
-          : `Still under team control next season — comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-advanced to next year's expected arbitration tier. Based on this season's performance and track record, the same basis a real arbitration panel uses.`;
-        outlookHtml = `
-          <div class="card-section-title">Next-Season Outlook</div>
-          <div class="card-value-box">
-            <div class="card-stat-label">Projected Next-Season Arbitration Value</div>
-            <div class="card-projected">${fmtMoney(record.projectedArbSalary)}</div>
-            <div class="card-value-note">${baseNote}${accomplishmentsNote(record)}${floorNote}${tierNote}</div>
-          </div>`;
-      }
-    } else if ((!teamControlled || pendingFA) && record.projectedPct != null && record.projectedMarketValue != null) {
-      // Only reachable for players not under arb-relevant team control (or
-      // actually reaching free agency) -- a rookie who's merely too far
-      // from arbitration to plausibly project (arbPlausibleNextSeason
-      // false above) falls through to no Outlook section at all, not this
-      // open-market branch; they can't legally be paid a market rate yet.
-      // The service-time branch of isNearingFreeAgency (team-controlled
-      // players) can be wrong when serviceYears is the debut-year proxy
-      // rather than a real accrued figure -- surface that the same way the
-      // arb-tier label already does, so a bad FA call isn't silently trusted.
-      const faBasisNote = pendingFA && teamControlled && !record.serviceYearsExact
-        ? ` Free-agency timing here is based on an estimated (not confirmed) service-time figure.`
-        : '';
-      outlookHtml = `
-        <div class="card-section-title">${pendingFA ? 'Pending Free Agent' : 'Next-Season Outlook'}</div>
-        <div class="card-value-box">
-          <div class="card-stat-label">${pendingFA ? 'Projected Free Agent Value' : 'Projected Next-Season Value'}</div>
-          <div class="card-projected">${fmtMoney(record.projectedMarketValue)}</div>
-          <div class="card-value-note">${record.projectedPct.toFixed(1)}th percentile projected performance for ${record.position} (Marcel + comparable-player blend) — ${pendingFA ? 'reaches free agency by next season, so this reflects' : 'not yet on the open market; this is'} projected future performance, not this season's stats.${faBasisNote}</div>
-        </div>`;
-    }
-
-    const contractHtml = renderContractSection(record);
-    const historyHtml = historySectionHtml(record);
-
-    document.getElementById('card-root').innerHTML = `
-      <div class="baseball-card" style="--team-1:${colors[0]}; --team-2:${colors[1]};">
+    // Hero Banner
+    const heroHtml = `
+      <div class="card-hero-banner" style="background: linear-gradient(135deg, ${colors[0]}, ${colors[1]});">
         <button class="card-close" id="card-close-btn" aria-label="Close">✕</button>
-        <div class="card-head">
-          <div class="card-head-top"><span>${record.team}</span><span>2026</span></div>
-          <div class="card-avatar-wrap">
-            <div class="card-avatar">${record.headshot ? `<img src="${record.headshot}" alt="" onload="this.classList.add('img-loaded')" onerror="this.parentElement.textContent='${initials(record.name)}'">` : initials(record.name)}</div>
-            <div class="card-grade-badge">${grade}</div>
+        <div class="card-hero-content">
+          <div class="card-hero-avatar">
+            ${headshotHtml(record, 'card-hero-img')}
+          </div>
+          <div class="card-hero-info">
+            <div class="card-hero-title-row">
+              <h2 class="card-hero-name">${record.name}</h2>
+              <span class="card-tier-pill tier-${tier.cls}">${tierBadgeText}</span>
+            </div>
+            <div class="card-hero-meta">${record.position} · ${teamFullName}</div>
+            <div class="card-hero-tag-row">
+              <span class="card-contract-badge">${contract.label}</span>
+              <span class="card-salary-mono">${fmtMoney(record.salary)} in ${CURRENT_SEASON}</span>
+            </div>
           </div>
         </div>
-        <div class="card-body">
-          <h2 class="card-name">${record.name}</h2>
-          <div class="card-subline">${record.position} · ${teamLogoImg(record.team, 15)}${teamNameByAbbr[record.team] || record.team}</div>
-          ${regressionHtml}
-          ${contractHtml}
-          ${valueHtml}
-          ${outlookHtml}
-          ${percentileSection(record.isBatter ? 'Batting' : 'Pitching', statSet, record)}
-          ${fieldingHtml}
-          ${runningHtml}
+      </div>
+    `;
+
+    const scoreHtml = renderScoreCard(record, surplus, fairMarket, contractAav);
+    const contractStatusHtml = renderContractStatusCard(record);
+    const gaugesHtml = renderPerformanceGaugesCard(record);
+    const salaryPeersHtml = renderSalaryPeersCard(record, surplus);
+    const historyHtml = renderFiveYearHistoryCard(record);
+
+    document.getElementById('card-root').innerHTML = `
+      <div class="baseball-card modern-player-card">
+        ${heroHtml}
+        <div class="card-content-stack">
+          ${scoreHtml}
+          ${contractStatusHtml}
+          ${gaugesHtml}
+          ${salaryPeersHtml}
           ${historyHtml}
         </div>
       </div>
     `;
+
     const overlay = document.getElementById('card-overlay');
     overlay.classList.remove('closing');
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
     overlay.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
-    animateBarsIn(document.getElementById('card-root'));
-    const currentRow = document.querySelector('#contract-years-scroll [data-current="1"]');
-    if (currentRow) currentRow.scrollIntoView({ block: 'center' });
+    document.body.classList.add('pc-locked');
   }
+
   function closeCard() {
     const overlay = document.getElementById('card-overlay');
+    if (!overlay || !overlay.classList.contains('open')) return;
     overlay.classList.add('closing');
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
     setTimeout(() => {
       overlay.classList.remove('closing');
       overlay.style.display = 'none';
-      document.body.style.overflow = '';
+      document.body.classList.remove('pc-locked');
     }, 160);
   }
   document.getElementById('card-overlay-bg').addEventListener('click', closeCard);

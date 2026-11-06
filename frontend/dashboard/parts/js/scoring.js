@@ -9,7 +9,16 @@
   // for a one-standard-deviation-better stat, fit by non-negative least
   // squares on 2015-2025, so the defaults are data-derived rather than
   // hand-picked; the sliders let you override them.
-  const EW_MODEL = DATA.expectedWarModel;
+  const EW_MODEL = DATA.expectedWarModel || {
+    batter: { weights: {}, offsets: {}, intercept: 0, cvR2: 0, nTrain: 0 },
+    pitcher: { weights: {}, offsets: {}, intercept: 0, cvR2: 0, nTrain: 0 },
+  };
+  // A single-season database (fresh local SQLite install) has no completed
+  // seasons to fit the expected-bWAR model on. In that case fall back to
+  // actual bWAR so the site still renders; the Predicted Score then mirrors
+  // Score until historical seasons are ingested.
+  const EW_AVAILABLE = !!(EW_MODEL && EW_MODEL.batter && EW_MODEL.batter.nTrain > 0
+    && EW_MODEL.pitcher && EW_MODEL.pitcher.nTrain > 0);
   const BATTER_STAT_CONFIG = [
     { key: 'xwoba', label: 'xwOBA', higherBetter: true, type: 'avg3' },
     { key: 'xslg', label: 'xSLG', higherBetter: true, type: 'avg3' },
@@ -439,16 +448,24 @@
       // predZ is standardized server-side against the same population the
       // model was trained on (expected_war.py); a stat the player is missing
       // simply contributes 0 = league average, as in training.
-      const m = p.isBatter ? EW_MODEL.batter : EW_MODEL.pitcher;
-      const offset = p.isBatter ? (m.offsets[p.position] || 0) : (p.position === 'RP' ? (m.offsets.RP || 0) : 0);
-      const baseWar = (m.intercept + offset) * p.volume;
-      let expected = baseWar;
-      const breakdown = cfg.map(s => {
-        const z = p.predZ[s.key] != null ? p.predZ[s.key] : null;
-        const contribution = z != null ? z * w[s.key] * p.volume : 0;
-        expected += contribution;
-        return { ...s, value: p.stats[s.key], z, contribution };
-      });
+      let baseWar = 0;
+      let expected = 0;
+      let breakdown;
+      if (EW_AVAILABLE) {
+        const m = p.isBatter ? EW_MODEL.batter : EW_MODEL.pitcher;
+        const offset = p.isBatter ? (m.offsets[p.position] || 0) : (p.position === 'RP' ? (m.offsets.RP || 0) : 0);
+        baseWar = (m.intercept + offset) * p.volume;
+        expected = baseWar;
+        breakdown = cfg.map(s => {
+          const z = p.predZ[s.key] != null ? p.predZ[s.key] : null;
+          const contribution = z != null ? z * w[s.key] * p.volume : 0;
+          expected += contribution;
+          return { ...s, value: p.stats[s.key], z, contribution };
+        });
+      } else {
+        expected = p.stats.bwar != null ? p.stats.bwar : 0;
+        breakdown = cfg.map(s => ({ ...s, value: p.stats[s.key], z: null, contribution: 0 }));
+      }
       p.expectedWar = expected;
       p.baseWar = baseWar;
       p.breakdown = breakdown;

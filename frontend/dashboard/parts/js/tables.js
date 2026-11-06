@@ -1,63 +1,248 @@
-  // --- Players tab (v2: position players only; pitchers live in Rotation/Bullpen) ---
+  // --- Players tab: modern unified Roster Value table for all players ---
   const POSITIONS = ['All', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'SP', 'RP'];
-  const BATTING_POSITIONS = ['All', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
-  let activePos = 'All';
-  let playerSort = { key: 'score', dir: 'desc' };
+  const INFIELD_POSITIONS = ['C', '1B', '2B', '3B', 'SS'];
+  const OUTFIELD_POSITIONS = ['LF', 'CF', 'RF', 'DH'];
+  const PLAYER_GROUPS = {
+    all: { label: 'All Players', positions: POSITIONS.slice(1) },
+    infield: { label: 'Infielders', positions: INFIELD_POSITIONS },
+    outfield: { label: 'Outfielders', positions: OUTFIELD_POSITIONS },
+    rotation: { label: 'Rotation', positions: ['SP'] },
+    bullpen: { label: 'Bullpen', positions: ['RP'] },
+  };
+  const PLAYER_GROUP_ORDER = ['all', 'infield', 'outfield', 'rotation', 'bullpen'];
+  const PLAYER_COLUMNS = [
+    { key: 'name', label: 'Player' },
+    { key: 'position', label: 'Pos' },
+    { key: 'tier', label: 'Value Tier' },
+    { key: 'contract', label: 'Contract' },
+    { key: 'salary', label: `${CURRENT_SEASON} Salary`, mono: true },
+    { key: 'compPct', label: 'Perf %', mono: true },
+    { key: 'market', label: 'Projected Market', mono: true },
+    { key: 'surplus', label: 'Net Surplus / Deficit', mono: true },
+    { key: 'driver', label: 'Key Stat Driver', mono: true },
+  ];
 
-  document.getElementById('pos-chips').innerHTML = BATTING_POSITIONS.map(p =>
-    `<button class="chip${p === 'All' ? ' active' : ''}" data-pos="${p}">${p}</button>`
-  ).join('');
+  let activePlayerGroup = 'all';
+  let activePos = 'All';
+  let playerSort = { key: 'surplus', dir: 'desc' };
+  let playerRowsCurrent = [];
+  let visiblePlayerCount = 100;
+
+  function renderPlayerGroupTabs() {
+    const tabsEl = document.getElementById('player-group-tabs');
+    if (!tabsEl) return;
+    tabsEl.innerHTML = PLAYER_GROUP_ORDER.map(group =>
+      `<button type="button" role="tab" class="player-group-tab${group === activePlayerGroup ? ' active' : ''}" data-group="${group}" aria-selected="${group === activePlayerGroup}">${PLAYER_GROUPS[group].label}</button>`
+    ).join('');
+  }
+
+  function renderPlayerPosChips() {
+    const chipsEl = document.getElementById('player-pos-chips');
+    if (!chipsEl) return;
+    const group = PLAYER_GROUPS[activePlayerGroup] || PLAYER_GROUPS.all;
+    const positions = (activePlayerGroup === 'rotation' || activePlayerGroup === 'bullpen')
+      ? ['All']
+      : ['All', ...group.positions];
+    chipsEl.innerHTML = positions.map(p =>
+      `<button type="button" class="chip${p === activePos ? ' active' : ''}" data-pos="${p}">${p === 'All' ? 'All' : p}</button>`
+    ).join('');
+  }
+
+  function playerHeadHtml() {
+    return '<tr>' + PLAYER_COLUMNS.map(col => {
+      const isSorted = playerSort.key === col.key;
+      const arrow = isSorted ? (playerSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+      const cls = (col.mono ? 'mono ' : '') + (isSorted ? 'sorted' : '');
+      return `<th class="${cls.trim()}" data-sort="${col.key}">${col.label}${arrow}</th>`;
+    }).join('') + '</tr>';
+  }
+
+  function playerSortValue(p, key) {
+    if (key === 'name') return (p.name || '').toLowerCase();
+    if (key === 'position') return p.position || '';
+    if (key === 'tier') return p.compPct != null ? p.compPct : 0;
+    if (key === 'contract') return contractLabel(p).label;
+    if (key === 'salary') return p.salary || 0;
+    if (key === 'compPct') return p.compPct != null ? p.compPct : 0;
+    if (key === 'market') return playerMarketValue(p);
+    if (key === 'surplus') return playerSurplus(p);
+    if (key === 'driver') return primaryDriver(p);
+    return p[key];
+  }
+
+  function matchesPlayerOrPosQuery(p, q) {
+    const query = q.toLowerCase();
+    const pos = (p.position || '').toLowerCase();
+    const name = (p.name || '').toLowerCase();
+    const team = (p.team || '').toLowerCase();
+    const fullTeam = (teamNameByAbbr[p.team] || '').toLowerCase();
+    const contract = contractLabel(p).label.toLowerCase();
+    const tier = tierForPlayer(p).label.toLowerCase();
+    return name.includes(query) ||
+           pos === query ||
+           pos.includes(query) ||
+           team === query ||
+           fullTeam.includes(query) ||
+           contract.includes(query) ||
+           tier.includes(query);
+  }
+
+  function playerRowHtml(p, i) {
+    const tier = tierForPlayer(p);
+    const contract = contractLabel(p);
+    const surplus = playerSurplus(p);
+    const market = playerMarketValue(p);
+    const pctl = p.compPct != null ? Math.round(p.compPct) : 0;
+    return `<tr class="player-roster-row" data-row-idx="${i}" tabindex="0">
+      <td class="player-cell">${headshotHtml(p, 'table-avatar')}<span class="player-name-text">${p.name}</span></td>
+      <td><span class="pos-badge">${p.position}</span></td>
+      <td><span class="badge-tier ${tier.cls}">${tier.label}</span></td>
+      <td><span class="contract-tag ${contract.cls}">${contract.label}</span></td>
+      <td class="mono">$${(p.salary || 0).toLocaleString()}</td>
+      <td class="mono font-bold ${perfPercentileCls(pctl)}">${formatOrdinal(pctl)}</td>
+      <td class="mono">$${Math.round(market).toLocaleString()}</td>
+      <td class="mono font-bold ${surplus >= 0 ? 'surplus-pos' : 'surplus-neg'}">${surplus >= 0 ? '+' : '-'}$${Math.abs(Math.round(surplus)).toLocaleString()}</td>
+      <td class="mono">${primaryDriver(p)}</td>
+    </tr>`;
+  }
 
   function renderPlayers() {
-    const q = document.getElementById('player-search').value.trim().toLowerCase();
+    const group = PLAYER_GROUPS[activePlayerGroup] || PLAYER_GROUPS.all;
+    const searchEl = document.getElementById('player-search');
+    const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
     let rows = allPlayers.filter(p =>
-      !p.isPreArb && p.isBatter &&
+      group.positions.includes(p.position) &&
       (activePos === 'All' || p.position === activePos) &&
-      (q === '' || matchesTeamQuery(p, q))
+      (q === '' || matchesPlayerOrPosQuery(p, q))
     );
     rows.sort((a, b) => {
-      const k = playerSort.key;
-      const va = a[k], vb = b[k];
+      const va = playerSortValue(a, playerSort.key);
+      const vb = playerSortValue(b, playerSort.key);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
       const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
       return playerSort.dir === 'asc' ? cmp : -cmp;
     });
-    document.getElementById('player-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for their card' : '');
-    const maxAbs = 100;
-    document.getElementById('player-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
-      <tr class="row-toggle" data-idx="${i}">
-        <td><span class="chevron">▸</span>${playerNameCellHtml(p)}</td>
-        <td class="num" data-count="${p.salary}" data-count-fmt="money">${fmtMoney(p.salary)}</td>
-        <td class="num" data-count="${p.compPct}" data-count-fmt="pct1">${p.compPct.toFixed(1)}</td>
-        <td class="num" data-count="${p.salPct}" data-count-fmt="pct1">${p.salPct.toFixed(1)}</td>
-        <td class="num" data-count="${p.recommendedSalary}" data-count-fmt="money">${fmtMoney(p.recommendedSalary)}</td>
-        <td class="num">${valueBar(p.score, maxAbs)}</td>
-        <td class="num">${valueBar(p.score, maxAbs)}</td>
-      </tr>`
-    ).join('') : `<tr><td colspan="6"><div class="empty">No players match that search.</div></td></tr>`;
     playerRowsCurrent = rows;
+
+    const theadEl = document.getElementById('player-thead');
+    if (theadEl) theadEl.innerHTML = playerHeadHtml();
+
+    const countEl = document.getElementById('player-count');
+    if (countEl) {
+      countEl.textContent = `${rows.length} player${rows.length === 1 ? '' : 's'} shown` +
+        (rows.length ? ' · click any row for detailed player card' : '');
+    }
+
+    const tbodyEl = document.getElementById('player-rows');
+    if (tbodyEl) {
+      if (!rows.length) {
+        tbodyEl.innerHTML = `<tr><td colspan="${PLAYER_COLUMNS.length}"><div class="empty">No players match "${q || activePos}".</div></td></tr>`;
+      } else {
+        const displayed = rows.slice(0, visiblePlayerCount);
+        tbodyEl.innerHTML = displayed.map((p, idx) => playerRowHtml(p, idx)).join('');
+      }
+    }
+
+    const pagEl = document.getElementById('player-pagination');
+    if (pagEl) {
+      if (rows.length > visiblePlayerCount) {
+        const remaining = rows.length - visiblePlayerCount;
+        pagEl.innerHTML = `<button type="button" class="show-more-btn" id="player-show-more">Show More (${remaining} remaining)</button>`;
+        const btn = document.getElementById('player-show-more');
+        if (btn) {
+          btn.addEventListener('click', () => {
+            visiblePlayerCount += 100;
+            renderPlayers();
+          });
+        }
+      } else {
+        pagEl.innerHTML = '';
+      }
+    }
   }
-  let playerRowsCurrent = [];
 
-  document.getElementById('player-rows').addEventListener('click', e => {
-    const row = e.target.closest('.row-toggle');
-    if (!row) return;
-    openPlayerCard(playerRowsCurrent[Number(row.dataset.idx)]);
-  });
+  function setPlayerGroup(group, opts) {
+    const next = PLAYER_GROUPS[group] ? group : 'all';
+    activePlayerGroup = next;
+    activePos = 'All';
+    visiblePlayerCount = 100;
+    renderPlayerGroupTabs();
+    renderPlayerPosChips();
+    if (opts && opts.render) renderPlayers();
+  }
 
-  document.getElementById('player-search').addEventListener('input', renderPlayers);
-  document.getElementById('pos-chips').addEventListener('click', e => {
-    const btn = e.target.closest('.chip');
-    if (!btn) return;
-    activePos = btn.dataset.pos;
-    document.querySelectorAll('#pos-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
-    renderPlayers();
-  });
+  renderPlayerGroupTabs();
+  renderPlayerPosChips();
 
-  // --- Rookies tab (pre-arb / MiLB, projected salary instead of value score) ---
-  let activeRookiePos = 'All';
-  let rookieSort = { key: 'surplus', dir: 'desc' };
+  const playerRowsEl = document.getElementById('player-rows');
+  if (playerRowsEl) {
+    playerRowsEl.addEventListener('click', e => {
+      const row = e.target.closest('.player-roster-row');
+      if (!row) return;
+      const idx = Number(row.dataset.rowIdx);
+      const p = playerRowsCurrent[idx];
+      if (p) openPlayerCard(p);
+    });
+    playerRowsEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        const row = e.target.closest('.player-roster-row');
+        if (!row) return;
+        e.preventDefault();
+        const idx = Number(row.dataset.rowIdx);
+        const p = playerRowsCurrent[idx];
+        if (p) openPlayerCard(p);
+      }
+    });
+  }
 
-  document.getElementById('rookie-pos-chips').innerHTML = POSITIONS.map(p =>
+  const playerSearchEl = document.getElementById('player-search');
+  if (playerSearchEl) {
+    playerSearchEl.addEventListener('input', () => {
+      visiblePlayerCount = 100;
+      renderPlayers();
+    });
+  }
+
+  const playerGroupTabsEl = document.getElementById('player-group-tabs');
+  if (playerGroupTabsEl) {
+    playerGroupTabsEl.addEventListener('click', e => {
+      const btn = e.target.closest('[data-group]');
+      if (!btn) return;
+      navigateTo('#/players/' + btn.dataset.group);
+    });
+  }
+
+  const playerPosChipsEl = document.getElementById('player-pos-chips');
+  if (playerPosChipsEl) {
+    playerPosChipsEl.addEventListener('click', e => {
+      const btn = e.target.closest('.chip');
+      if (!btn) return;
+      activePos = btn.dataset.pos;
+      document.querySelectorAll('#player-pos-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
+      visiblePlayerCount = 100;
+      renderPlayers();
+    });
+  }
+
+  const playerTheadEl = document.getElementById('player-thead');
+  if (playerTheadEl) {
+    playerTheadEl.addEventListener('click', e => {
+      const th = e.target.closest('th[data-sort]');
+      if (!th) return;
+      const key = th.dataset.sort;
+      playerSort.dir = playerSort.key === key && playerSort.dir === 'desc' ? 'asc' : 'desc';
+      playerSort.key = key;
+      renderPlayers();
+    });
+  }
+
+  // --- Pre-Arbitration tab (pre-arb / MiLB, projected salary instead of value score) ---
+  let activePreArbPos = 'All';
+  let preArbSort = { key: 'surplus', dir: 'desc' };
+
+  document.getElementById('prearb-pos-chips').innerHTML = POSITIONS.map(p =>
     `<button class="chip${p === 'All' ? ' active' : ''}" data-pos="${p}">${p}</button>`
   ).join('');
 
@@ -69,271 +254,55 @@
     </div>`;
   }
 
-  function renderRookies() {
-    const q = document.getElementById('rookie-search').value.trim().toLowerCase();
+  function renderPreArb() {
+    const q = document.getElementById('prearb-search').value.trim().toLowerCase();
     let rows = allPlayers.filter(p =>
       p.isPreArb &&
-      (activeRookiePos === 'All' || p.position === activeRookiePos) &&
+      (activePreArbPos === 'All' || p.position === activePreArbPos) &&
       (q === '' || matchesTeamQuery(p, q))
     );
     rows.sort((a, b) => {
-      const k = rookieSort.key;
+      const k = preArbSort.key;
       const va = a[k], vb = b[k];
       const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
-      return rookieSort.dir === 'asc' ? cmp : -cmp;
+      return preArbSort.dir === 'asc' ? cmp : -cmp;
     });
-    document.getElementById('rookie-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for their card' : '');
+    document.getElementById('prearb-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for their card' : '');
     const allSurplus = allPlayers.filter(p => p.isPreArb && p.surplus != null).map(p => p.surplus);
     const maxSurplus = Math.max(...allSurplus, 1);
-    document.getElementById('rookie-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
+    document.getElementById('prearb-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
       <tr class="row-toggle" data-idx="${i}">
         <td><span class="chevron">▸</span>${playerNameCellHtml(p)}</td>
         <td class="num" data-count="${p.salary}" data-count-fmt="money">${fmtMoney(p.salary)}</td>
         <td class="num" data-count="${p.compPct}" data-count-fmt="pct1">${p.compPct.toFixed(1)}</td>
         <td class="num" data-count="${p.projectedSalary}" data-count-fmt="money">${fmtMoney(p.projectedSalary)}</td>
         <td class="num">${surplusBar(p.surplus, maxSurplus)}</td>
-        <td class="num">${surplusBar(p.surplus, maxSurplus)}</td>
       </tr>`
     ).join('') : `<tr><td colspan="5"><div class="empty">No prospects match that search.</div></td></tr>`;
-    rookieRowsCurrent = rows;
+    preArbRowsCurrent = rows;
   }
-  let rookieRowsCurrent = [];
+  let preArbRowsCurrent = [];
 
-  document.getElementById('rookie-rows').addEventListener('click', e => {
+  document.getElementById('prearb-rows').addEventListener('click', e => {
     const row = e.target.closest('.row-toggle');
     if (!row) return;
-    openPlayerCard(rookieRowsCurrent[Number(row.dataset.idx)]);
+    openPlayerCard(preArbRowsCurrent[Number(row.dataset.idx)]);
   });
 
-  document.getElementById('rookie-search').addEventListener('input', renderRookies);
-  document.getElementById('rookie-pos-chips').addEventListener('click', e => {
+  document.getElementById('prearb-search').addEventListener('input', renderPreArb);
+  document.getElementById('prearb-pos-chips').addEventListener('click', e => {
     const btn = e.target.closest('.chip');
     if (!btn) return;
-    activeRookiePos = btn.dataset.pos;
-    document.querySelectorAll('#rookie-pos-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
-    renderRookies();
+    activePreArbPos = btn.dataset.pos;
+    document.querySelectorAll('#prearb-pos-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
+    renderPreArb();
   });
 
-  document.querySelectorAll('#rookies-view thead th[data-sort]').forEach(th => {
+  document.querySelectorAll('#prearb-view thead th[data-sort]').forEach(th => {
     th.addEventListener('click', () => {
       const key = th.dataset.sort;
-      rookieSort.dir = rookieSort.key === key && rookieSort.dir === 'desc' ? 'asc' : 'desc';
-      rookieSort.key = key;
-      renderRookies();
+      preArbSort.dir = preArbSort.key === key && preArbSort.dir === 'desc' ? 'asc' : 'desc';
+      preArbSort.key = key;
+      renderPreArb();
     });
   });
-
-  // --- Arbitration tab: currently arb-eligible players, sortable by arb
-  // year (tier) and position -- separate from the Pre-Arbitration tab
-  // (players who haven't reached arbitration yet at all).
-  let activeArbPos = 'All';
-  let activeArbYear = 'All';
-  let arbSort = { key: 'projectedArbSurplus', dir: 'desc' };
-
-  document.getElementById('arb-pos-chips').innerHTML = POSITIONS.map(p =>
-    `<button class="chip${p === 'All' ? ' active' : ''}" data-pos="${p}">${p}</button>`
-  ).join('');
-  const ARB_YEAR_CHIPS = ['All', '1', '2', '3'];
-  document.getElementById('arb-year-chips').innerHTML = ARB_YEAR_CHIPS.map(y =>
-    `<button class="chip${y === 'All' ? ' active' : ''}" data-year="${y}">${y === 'All' ? 'All Arb' : 'Arb ' + y}</button>`
-  ).join('');
-
-  function renderArbitration() {
-    const q = document.getElementById('arb-search').value.trim().toLowerCase();
-    let rows = allPlayers.filter(p =>
-      isArbEligible(p) &&
-      (activeArbPos === 'All' || p.position === activeArbPos) &&
-      (q === '' || matchesTeamQuery(p, q))
-    );
-    rows.forEach(p => {
-      p.arbYearNum = arbYearNumber(p);
-      // A player one tier away from 6.000 years of service reaches free
-      // agency next season, not another arb year -- there's no real arb
-      // process left to project (isNearingFreeAgency is the same real
-      // service-time check the player card's Next-Season Outlook already
-      // uses for this exact branch). For them, "projected 2027" has to mean
-      // real open-market value (projectedMarketValue), not the arb-tier
-      // comp (projectedArbSalary), which would otherwise just clamp at the
-      // 80% Arb-3 tier as if they were still under control.
-      p.arbTabPendingFA = isNearingFreeAgency(p);
-      p.arbTabProjectedValue = p.arbTabPendingFA ? p.projectedMarketValue : p.projectedArbSalary;
-      // Distinct from the shared p.arbSurplus (this year's expected-vs-actual,
-      // still used on the player card) -- this is the projected year-over-
-      // year change: next year's projected value (arb comp, or open-market
-      // if reaching free agency) minus this year's real AAV.
-      p.projectedArbSurplus = p.arbTabProjectedValue != null ? p.arbTabProjectedValue - p.aav : null;
-    });
-    if (activeArbYear !== 'All') rows = rows.filter(p => p.arbYearNum === Number(activeArbYear));
-    rows.sort((a, b) => {
-      const k = arbSort.key;
-      const va = a[k], vb = b[k];
-      if (va == null && vb == null) return 0;
-      if (va == null) return 1;
-      if (vb == null) return -1;
-      const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
-      return arbSort.dir === 'asc' ? cmp : -cmp;
-    });
-    document.getElementById('arb-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for their card' : '');
-    // Header reflects what's actually being shown: if every visible row is
-    // pending free agency (typically the Arb 3 / final-year filter), the
-    // "projected" column is real open-market value, not an arb comp.
-    const allPendingFA = rows.length > 0 && rows.every(p => p.arbTabPendingFA);
-    document.querySelector('#arbitration-view thead th[data-sort="arbTabProjectedValue"]').textContent =
-      allPendingFA ? 'Projected Free Agent Value' : 'Projected 2027';
-    document.getElementById('arb-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => `
-      <tr class="row-toggle" data-idx="${i}">
-        <td><span class="chevron">▸</span>${playerNameCellHtml(p)}</td>
-        <td>${arbYearShortLabel(p)}${p.arbTabPendingFA ? ' <span class="pos-pill" title="Reaches free agency next season">FA</span>' : ''}</td>
-        <td class="num" data-count="${p.aav}" data-count-fmt="money">${fmtMoney(p.aav)}</td>
-        <td class="num" data-count="${p.arbTabProjectedValue ?? ''}" data-count-fmt="money">${p.arbTabProjectedValue != null ? fmtMoney(p.arbTabProjectedValue) : '—'}</td>
-        <td class="num ${p.projectedArbSurplus != null && p.projectedArbSurplus >= 0 ? 'good' : 'bad'}"${p.projectedArbSurplus != null ? ` data-count="${p.projectedArbSurplus}" data-count-fmt="signedM"` : ''}>${p.projectedArbSurplus != null ? fmtSigned(p.projectedArbSurplus / 1e6) + 'M' : '—'}</td>
-      </tr>`
-    ).join('') : `<tr><td colspan="5"><div class="empty">No arbitration-eligible players match that search.</div></td></tr>`;
-    arbRowsCurrent = rows;
-  }
-  let arbRowsCurrent = [];
-
-  document.getElementById('arb-rows').addEventListener('click', e => {
-    const row = e.target.closest('.row-toggle');
-    if (!row) return;
-    openPlayerCard(arbRowsCurrent[Number(row.dataset.idx)]);
-  });
-
-  document.getElementById('arb-search').addEventListener('input', renderArbitration);
-  document.getElementById('arb-pos-chips').addEventListener('click', e => {
-    const btn = e.target.closest('.chip');
-    if (!btn) return;
-    activeArbPos = btn.dataset.pos;
-    document.querySelectorAll('#arb-pos-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
-    renderArbitration();
-  });
-  document.getElementById('arb-year-chips').addEventListener('click', e => {
-    const btn = e.target.closest('.chip');
-    if (!btn) return;
-    activeArbYear = btn.dataset.year;
-    document.querySelectorAll('#arb-year-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
-    renderArbitration();
-  });
-
-  document.querySelectorAll('#arbitration-view thead th[data-sort]').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.dataset.sort;
-      arbSort.dir = arbSort.key === key && arbSort.dir === 'desc' ? 'asc' : 'desc';
-      arbSort.key = key;
-      renderArbitration();
-    });
-  });
-
-  // --- Rotation tab (v2: market-priced starters) ---
-  let rotationSort = { key: 'fip', dir: 'asc' };
-  function rotationVal(p, key) {
-    if (key === 'k_minus_bb') return kMinusBbPct(p);
-    return p.stats[key] != null ? p.stats[key] : null;
-  }
-  function renderRotation() {
-    const q = document.getElementById('rotation-search').value.trim().toLowerCase();
-    const rows = allPlayers.filter(p =>
-      p.position === 'SP' && !p.isPreArb &&
-      (q === '' || matchesTeamQuery(p, q))
-    );
-    rows.sort((a, b) => {
-      const k = rotationSort.key;
-      if (k === 'name') return rotationSort.dir === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
-      const va = rotationVal(a, k), vb = rotationVal(b, k);
-      if (va == null && vb == null) return 0;
-      if (va == null) return 1;
-      if (vb == null) return -1;
-      return rotationSort.dir === 'asc' ? va - vb : vb - va;
-    });
-    document.getElementById('rotation-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for their card' : '');
-    document.getElementById('rotation-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => {
-      const ip = p.stats.ip, fip = p.stats.fip, xera = p.stats.xera, stuff = p.stats.stuff_plus;
-      const kbb = kMinusBbPct(p);
-      return `<tr class="row-toggle" data-idx="${i}">
-        <td><span class="chevron">▸</span>${playerNameCellHtml(p)}</td>
-        <td class="num"${ip != null ? ` data-count="${ip}" data-count-fmt="dec1"` : ''}>${ip != null ? ip.toFixed(1) : '—'}</td>
-        <td class="num"${fip != null ? ` data-count="${fip}" data-count-fmt="dec2"` : ''}>${fip != null ? fip.toFixed(2) : '—'}</td>
-        <td class="num"${xera != null ? ` data-count="${xera}" data-count-fmt="dec2"` : ''}>${xera != null ? xera.toFixed(2) : '—'}</td>
-        <td class="num"${stuff != null ? ` data-count="${stuff}" data-count-fmt="dec1"` : ''}>${stuff != null ? stuff.toFixed(1) : '—'}</td>
-        <td class="num"${kbb != null ? ` data-count="${kbb}" data-count-fmt="pct1s"` : ''}>${kbb != null ? kbb.toFixed(1) + '%' : '—'}</td>
-        <td class="num" data-count="${p.salary}" data-count-fmt="money">${fmtMoney(p.salary)}</td>
-        <td class="num">${valueBar(p.score, 100)}</td>
-      </tr>`;
-    }).join('') : `<tr><td colspan="8"><div class="empty">No starters match that search.</div></td></tr>`;
-    rotationRowsCurrent = rows;
-  }
-  let rotationRowsCurrent = [];
-
-  document.getElementById('rotation-rows').addEventListener('click', e => {
-    const row = e.target.closest('.row-toggle');
-    if (!row) return;
-    openPlayerCard(rotationRowsCurrent[Number(row.dataset.idx)]);
-  });
-
-  document.getElementById('rotation-search').addEventListener('input', renderRotation);
-  document.querySelectorAll('#rotation-view thead th[data-sort]').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.dataset.sort;
-      rotationSort.dir = rotationSort.key === key && rotationSort.dir === 'desc' ? 'asc' : 'desc';
-      rotationSort.key = key;
-      renderRotation();
-    });
-  });
-
-  // --- Bullpen tab (v2: market-priced relievers) ---
-  let bullpenSort = { key: 'paySurplus', dir: 'desc' };
-  function bullpenVal(p, key) {
-    if (key === 'paySurplus') return p.paySurplus;
-    if (key === 'k_minus_bb') return kMinusBbPct(p);
-    if (key === 'bwar') return p.stats.bwar;
-    return p.stats[key] != null ? p.stats[key] : null;
-  }
-  function renderBullpen() {
-    const q = document.getElementById('bullpen-search').value.trim().toLowerCase();
-    const rows = allPlayers.filter(p =>
-      p.position === 'RP' && !p.isPreArb &&
-      (q === '' || matchesTeamQuery(p, q))
-    );
-    rows.sort((a, b) => {
-      const k = bullpenSort.key;
-      if (k === 'name') return bullpenSort.dir === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
-      const va = bullpenVal(a, k), vb = bullpenVal(b, k);
-      if (va == null && vb == null) return 0;
-      if (va == null) return 1;
-      if (vb == null) return -1;
-      return bullpenSort.dir === 'asc' ? va - vb : vb - va;
-    });
-    document.getElementById('bullpen-count').textContent = `${rows.length} shown` + (rows.length ? ' · click a player for their card' : '');
-    document.getElementById('bullpen-rows').innerHTML = rows.length ? rows.slice(0, 300).map((p, i) => {
-      const ip = p.stats.ip, era = p.stats.era, war = p.stats.bwar;
-      const kbb = kMinusBbPct(p);
-      return `<tr class="row-toggle" data-idx="${i}">
-        <td><span class="chevron">▸</span>${playerNameCellHtml(p)}</td>
-        <td class="num"${ip != null ? ` data-count="${ip}" data-count-fmt="dec1"` : ''}>${ip != null ? ip.toFixed(1) : '—'}</td>
-        <td class="num"${era != null ? ` data-count="${era}" data-count-fmt="dec2"` : ''}>${era != null ? era.toFixed(2) : '—'}</td>
-        <td class="num"${kbb != null ? ` data-count="${kbb}" data-count-fmt="pct1s"` : ''}>${kbb != null ? kbb.toFixed(1) + '%' : '—'}</td>
-        <td class="num"${war != null ? ` data-count="${war}" data-count-fmt="dec1"` : ''}>${war != null ? war.toFixed(1) : '—'}</td>
-        <td class="num ${p.paySurplus != null && p.paySurplus >= 0 ? 'good' : 'bad'}"${p.paySurplus != null ? ` data-count="${p.paySurplus}" data-count-fmt="signedM"` : ''}>${surplusM(p)}</td>
-        <td class="num">${valueBar(p.score, 100)}</td>
-      </tr>`;
-    }).join('') : `<tr><td colspan="7"><div class="empty">No relievers match that search.</div></td></tr>`;
-    bullpenRowsCurrent = rows;
-  }
-  let bullpenRowsCurrent = [];
-
-  document.getElementById('bullpen-rows').addEventListener('click', e => {
-    const row = e.target.closest('.row-toggle');
-    if (!row) return;
-    openPlayerCard(bullpenRowsCurrent[Number(row.dataset.idx)]);
-  });
-
-  document.getElementById('bullpen-search').addEventListener('input', renderBullpen);
-  document.querySelectorAll('#bullpen-view thead th[data-sort]').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.dataset.sort;
-      bullpenSort.dir = bullpenSort.key === key && bullpenSort.dir === 'desc' ? 'asc' : 'desc';
-      bullpenSort.key = key;
-      renderBullpen();
-    });
-  });
-
