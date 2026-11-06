@@ -708,7 +708,7 @@
           <div class="war-row war-row-head"><span></span><span>PROJECTED FWAR</span><span></span><span>VALUE</span></div>
           ${rows}
         </div>
-        <div class="card-box-footer-note"><strong>${w.war5.toFixed(1)} fWAR</strong> projected over ${first}–${first + 4}. Marcel-style: fWAR of ${hist} (weighted 5-4-3 by playing time, regressed toward league average), aged forward each year, priced at $11.23M per WAR rising 4% a year. Years are guaranteed while projected WAR stays at or above ${w.keepWar.toFixed(1)}; a model output, not a prediction of what a team will sign.${thinNote}</div>
+        <div class="card-box-footer-note"><strong>${w.war5.toFixed(1)} fWAR</strong> projected over ${first}–${first + 4}. Marcel-style: fWAR of ${hist} (weighted 5-4-3 by playing time, regressed toward league average, then calibrated to how past projections of this size actually turned out), aged forward each year, priced at a flat $11.23M per WAR. Years are guaranteed while projected WAR stays at or above ${w.keepWar.toFixed(1)}; a model output, not a prediction of what a team will sign.${thinNote}</div>
       </div>`;
   }
 
