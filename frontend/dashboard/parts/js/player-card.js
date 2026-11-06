@@ -162,8 +162,13 @@
     if (p.isPreArb || isArbEligible(p)) {
       return p.serviceYears != null && p.serviceYears + 1 >= 6.0;
     }
+    // After the season, FanGraphs rolls its contract pages over to the next
+    // year and drops players whose deals just expired, so a market-priced
+    // player with no contract record at all has no deal for next season -- he
+    // is the free agent, not an unknown. (In-season every signed player has a
+    // record.)
     const contract = contracts[p.id];
-    return !!(contract && contract.endSeasonAll === CURRENT_SEASON);
+    return !contract || contract.endSeasonAll <= CURRENT_SEASON;
   }
 
   function contractYearRow(y) {
@@ -669,6 +674,44 @@
     `;
   }
 
+  // Five-year fWAR outlook + the open-market deal it implies (war_projection.py).
+  // Sits next to the existing projected-market numbers rather than replacing
+  // them: those price what comparable players are paid today, this one prices
+  // projected fWAR over a multi-year deal.
+  function renderWarOutlookCard(record) {
+    const w = record.warOutlook;
+    if (!w || !Array.isArray(w.war)) return '';
+    const first = CURRENT_SEASON + 1;
+    const maxWar = Math.max(...w.war, 1);
+    const rows = w.war.map((v, i) => {
+      const inDeal = i < w.years;
+      const width = Math.max(0, Math.min(100, (v / maxWar) * 100));
+      return `<div class="war-row${inDeal ? ' in-deal' : ''}">
+        <span class="war-year">${first + i}</span>
+        <div class="war-bar"><div class="war-bar-fill" style="width:${width}%"></div></div>
+        <span class="war-val">${v.toFixed(1)}</span>
+        <span class="war-dollars">${inDeal ? fmtMoney(w.values[i]) : '—'}</span>
+      </div>`;
+    }).join('');
+    const hist = (w.hist || []).map(h => `${h.season}: ${h.war.toFixed(1)}`).join(', ');
+    const dealLine = w.years > 0
+      ? `<div class="war-deal-line"><span class="war-deal-total">${w.years} yr${w.years > 1 ? 's' : ''} · ${fmtMoney(w.total)}</span><span class="war-deal-aav">${fmtMoney(w.aav)} / yr</span></div>`
+      : `<div class="war-deal-line"><span class="war-deal-total">No multi-year value</span></div>`;
+    const thinNote = (w.thin ? ' Limited MLB history behind this projection, so treat it as rough.' : '')
+      + (w.ageCapped ? ' The length is capped by age: a deal is not extended past his age-38 season.' : '');
+    return `
+      <div class="player-card-box">
+        <div class="box-head-row"><span class="box-title">5-YEAR WAR &amp; CONTRACT ESTIMATE</span></div>
+        <div class="box-subtitle">Projected fWAR · open-market model</div>
+        ${dealLine}
+        <div class="war-rows">
+          <div class="war-row war-row-head"><span></span><span>PROJECTED FWAR</span><span></span><span>VALUE</span></div>
+          ${rows}
+        </div>
+        <div class="card-box-footer-note"><strong>${w.war5.toFixed(1)} fWAR</strong> projected over ${first}–${first + 4}. Marcel-style: fWAR of ${hist} (weighted 5-4-3 by playing time, regressed toward league average), aged forward each year, priced at $11.23M per WAR rising 4% a year. Years are guaranteed while projected WAR stays at or above ${w.keepWar.toFixed(1)}; a model output, not a prediction of what a team will sign.${thinNote}</div>
+      </div>`;
+  }
+
   function openPlayerCard(record) {
     if (!record) return;
     const colors = teamColors[record.team] || ['#3a4a42', '#1a231e'];
@@ -718,6 +761,7 @@
 
     const scoreHtml = renderScoreCard(record, surplus, fairMarket, contractAav);
     const contractStatusHtml = renderContractStatusCard(record);
+    const warOutlookHtml = renderWarOutlookCard(record);
     const gaugesHtml = renderPerformanceGaugesCard(record);
     const salaryPeersHtml = renderSalaryPeersCard(record, surplus);
     const historyHtml = renderFiveYearHistoryCard(record);
@@ -728,6 +772,7 @@
         <div class="card-content-stack">
           ${scoreHtml}
           ${contractStatusHtml}
+          ${warOutlookHtml}
           ${gaugesHtml}
           ${salaryPeersHtml}
           ${historyHtml}

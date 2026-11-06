@@ -90,6 +90,7 @@ function createRenderEnvironment(snapshotData, customSeason = null) {
     'tables.js',
     'teams.js',
     'team-view.js',
+    'free-agents.js',
     'scoring.js',
     'weights.js',
     'custom.js',
@@ -169,6 +170,19 @@ for (let i = 0; i < top50Players.length; i++) {
   for (const yr of [2026, 2027, 2028, 2029, 2030]) {
     if (!html.includes(`>${yr}<`)) {
       throw new Error(`[Rank #${i+1}] ${p.name}: Missing contract status year row for ${yr}`);
+    }
+  }
+
+  // Five-year fWAR outlook checks
+  if (p.warOutlook) {
+    if (!html.includes('5-YEAR WAR &amp; CONTRACT ESTIMATE')) {
+      throw new Error(`[Rank #${i+1}] ${p.name}: Missing 5-year fWAR outlook section`);
+    }
+    if (!html.includes('Projected fWAR')) {
+      throw new Error(`[Rank #${i+1}] ${p.name}: Missing projected fWAR label`);
+    }
+    if (!html.includes('war-bar-fill')) {
+      throw new Error(`[Rank #${i+1}] ${p.name}: Missing fWAR projection bars`);
     }
   }
 

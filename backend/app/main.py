@@ -37,6 +37,7 @@ _DASHBOARD_JS_PARTS = (
     "tables.js",
     "teams.js",
     "team-view.js",
+    "free-agents.js",
     "scoring.js",
     "weights.js",
     "custom.js",

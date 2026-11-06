@@ -2553,6 +2553,19 @@
     
     .card-content-stack { padding: 1.5rem 1.75rem 2rem; display: flex; flex-direction: column; gap: 1.25rem; }
     .player-card-box { background: #0c1422; border: 1px solid #18273a; border-radius: 12px; padding: 1.35rem 1.6rem; }
+    .war-deal-line { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; margin: -0.15rem 0 0.8rem; }
+    .war-deal-total { color: var(--text-main); font-family: var(--font-primary); font-size: 1rem; font-weight: 800; }
+    .war-deal-aav { color: var(--text-sub); font-family: var(--font-mono); font-size: 0.76rem; }
+    .war-rows { margin-top: 0.4rem; }
+    .war-row { display: grid; grid-template-columns: 3rem 1fr 3.2rem 4.6rem; align-items: center; gap: 0.6rem; padding: 0.22rem 0; color: var(--text-sub); font-family: var(--font-mono); font-size: 0.74rem; }
+    .war-row-head { padding-bottom: 0.35rem; border-bottom: 1px solid var(--border-color-subtle); color: var(--text-muted); font-size: 0.6rem; font-weight: 700; letter-spacing: 0.06em; }
+    .war-row-head span:last-child, .war-dollars { text-align: right; }
+    .war-bar { height: 0.42rem; overflow: hidden; background: var(--border-color); border-radius: 999px; }
+    .war-bar-fill { height: 100%; background: var(--text-muted); border-radius: 999px; opacity: 0.55; }
+    .war-row.in-deal .war-bar-fill { background: var(--accent-gold); opacity: 1; }
+    .war-row .war-val { color: var(--text-main); font-weight: 700; text-align: right; }
+    .war-row.in-deal .war-dollars { color: var(--accent-gold); font-weight: 700; }
+    .fa-note { max-width: 60rem; margin: 1rem 0.15rem 0.25rem; color: var(--text-muted); font-size: 0.8rem; line-height: 1.55; }
     .box-head-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
     .box-title { color: #f59e0b; font-family: var(--font-primary); font-size: 0.82rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
     .box-subtitle { color: #64748b; font-size: 0.76rem; font-family: var(--font-primary); margin-top: -0.3rem; margin-bottom: 0.85rem; }

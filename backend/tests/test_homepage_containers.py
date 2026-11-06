@@ -44,7 +44,7 @@ def test_homepage_all_player_containers_and_rotation_styling():
     global.window = { addEventListener: () => {} };
     global.location = { hash: '', search: '' };
 
-    const parts = ['core.js', 'player-card.js', 'home.js', 'tables.js', 'teams.js', 'team-view.js', 'scoring.js', 'weights.js', 'custom.js', 'nav.js'];
+    const parts = ['core.js', 'player-card.js', 'home.js', 'tables.js', 'teams.js', 'team-view.js', 'free-agents.js', 'scoring.js', 'weights.js', 'custom.js', 'nav.js'];
     let code = '';
     for (const p of parts) {
       let c = fs.readFileSync(path.join(root, 'frontend/dashboard/parts/js', p), 'utf8');
@@ -128,6 +128,15 @@ def test_homepage_all_player_containers_and_rotation_styling():
       const p = homeRowsCurrent[i];
       if (!p || !p.name || !p.position) throw new Error('Invalid player indexed at ' + i);
     }
+
+    // 7. Free Agents view uses the fWAR outlook contract
+    const faRows = getEl('fa-rows').innerHTML;
+    if (!faRows.includes('row-toggle')) throw new Error('Free Agents view rendered no rows');
+    if (!faRows.includes('name-cell')) throw new Error('Free Agents rows missing player identity cell');
+    if (faRowsCurrent.length === 0) throw new Error('Free Agents row index is empty');
+    if (!faRowsCurrent.every(r => r.p.warOutlook)) throw new Error('Free Agents row missing warOutlook');
+    if (!getEl('fa-count').textContent.includes('shown')) throw new Error('Free Agents count not populated');
+    if (!getEl('fa-note').textContent.includes('fWAR projection')) throw new Error('Free Agents note not populated');
 
     console.log('OK');
     """

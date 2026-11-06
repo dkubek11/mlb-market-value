@@ -161,6 +161,32 @@
     </div>
   </div>
 
+  <div id="freeagents-view" style="display:none">
+    <div class="controls">
+      <input class="search" id="fa-search" placeholder="Search player or team..." />
+      <div class="chips" id="fa-pos-chips"></div>
+      <div class="spacer"></div>
+      <span class="count" id="fa-count"></span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th data-sort="name">Player</th>
+            <th class="num" data-sort="age">Age</th>
+            <th class="num" data-sort="war1">Next-Season WAR</th>
+            <th class="num" data-sort="war5">5-Yr WAR</th>
+            <th class="num" data-sort="years">Years</th>
+            <th class="num" data-sort="aav">AAV</th>
+            <th class="num" data-sort="total">Total</th>
+          </tr>
+        </thead>
+        <tbody id="fa-rows"></tbody>
+      </table>
+    </div>
+    <p class="fa-note" id="fa-note"></p>
+  </div>
+
   <div id="teams-view" style="display:none">
     <div class="controls">
       <div class="cascade-filter" id="teams-cascade"></div>

@@ -1,14 +1,15 @@
   // --- Router ---------------------------------------------------------------
   // Hash routes keep every view deep-linkable without adding server routes:
-  //   #/home #/players #/players/<group> #/pre-arbitration #/teams
-  //   #/team/<slug> #/weights
+  //   #/home #/players #/players/<group> #/pre-arbitration #/free-agents
+  //   #/teams #/team/<slug> #/weights
   // Players groups: all, infield, outfield, rotation, bullpen. Legacy
   // #/rotation and #/bullpen now land on the matching Players group, and
   // legacy #/rookies lands on Pre-Arbitration.
-  const TAB_VIEWS = ['home', 'players', 'prearb', 'teams', 'custom'];
+  const TAB_VIEWS = ['home', 'players', 'prearb', 'freeagents', 'teams', 'custom'];
   const ROUTE_TO_VIEW = {
     home: 'home', players: 'players',
     'pre-arbitration': 'prearb', prearb: 'prearb', rookies: 'prearb',
+    'free-agents': 'freeagents', freeagents: 'freeagents',
     teams: 'teams', weights: 'custom', team: 'team',
   };
   const LEGACY_PLAYER_GROUPS = { rotation: 'rotation', bullpen: 'bullpen' };
@@ -100,6 +101,7 @@
     } else {
       resetTeamTheme();
       if (parsed.view === 'teams') renderTeams();
+      if (parsed.view === 'freeagents') renderFreeAgents();
       if (parsed.view === 'players') {
         setPlayerGroup(parsed.group || 'all');
         renderPlayers();
@@ -199,6 +201,7 @@
     renderHome();
     renderPlayers();
     renderPreArb();
+    renderFreeAgents();
     renderTeams();
     renderCustomScore();
     if (currentTab === 'team' && activeTeamAbbr) renderTeamPage(activeTeamAbbr);
