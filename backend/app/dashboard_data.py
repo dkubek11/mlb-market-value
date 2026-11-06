@@ -252,7 +252,7 @@ def build_dashboard_payload(season: int, *, fetch_live_contracts: bool = True) -
     pitcher_proj = blend_projections(pitcher_marcel, pitcher_comp, list(PITCHER_PROJECTION_STATS.keys()))
 
     print(f"[{season}] fetching trailing 30-day stats for Hot vs Cold...")
-    last30_batting, last30_pitching = fetch_last30()
+    last30_batting, last30_pitching = fetch_last30(season=season)
     print(f"  last30: {len(last30_batting)} batters, {len(last30_pitching)} pitchers clear the playing-time floor")
 
     position_stats: dict[str, dict[str, dict]] = {}
@@ -309,6 +309,7 @@ def build_dashboard_payload(season: int, *, fetch_live_contracts: bool = True) -
         team_colors = json.load(f)
 
     return {
+        "season": season,
         "allPlayers": all_players,
         "positionStats": position_stats,
         "teams": teams_out,

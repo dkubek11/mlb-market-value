@@ -392,7 +392,7 @@ def build_dashboard_data(season: int) -> dict:
     # distinct "over/underperforming this season" concept). Shared with the
     # JSON API payload (app/pipeline/trailing_stats.py).
     print(f"[{season}] fetching trailing 30-day stats for Hot vs Cold...")
-    last30_batting, last30_pitching = fetch_last30()
+    last30_batting, last30_pitching = fetch_last30(season=season)
     print(f"  last30: {len(last30_batting)} batters, {len(last30_pitching)} pitchers clear the playing-time floor")
 
     # Percentile-bar baselines: full-time peers only (the old PA/IP bars), not the
@@ -767,6 +767,7 @@ def build_dashboard_data(season: int) -> dict:
         team_colors = json.load(f)
 
     out = {
+        "season": season,
         "allPlayers": all_players,
         "expectedWarModel": expected_war_model,
         "positionStats": positionStats,

@@ -14,6 +14,8 @@ import json
 import time
 from pathlib import Path
 
+import requests
+
 from app.pipeline import mlb_stats_api
 
 # Playing-time floor for the trailing 30-day window (real AVG/ERA is
@@ -81,10 +83,54 @@ def _parse(splits: list[dict], stat_key: str, pt_key: str, min_pt: int) -> dict[
     return out
 
 
-def fetch_last30(end_date: datetime.date | None = None) -> tuple[dict[int, float], dict[int, float]]:
+def get_trailing_window_end_date(season: int | None = None) -> datetime.date | None:
+    """Return the effective end date of the 30-day trailing window for season.
+    - If in progress (regularSeasonStartDate <= today <= regularSeasonEndDate): today
+    - If completed (today > regularSeasonEndDate): regularSeasonEndDate
+    - If future or before season starts: None (no regular-season games played yet)
+    """
+    if season is None:
+        return datetime.date.today()
+    try:
+        resp = requests.get(
+            "https://statsapi.mlb.com/api/v1/seasons",
+            params={"sportId": 1, "season": season},
+            timeout=10,
+        )
+        seasons = resp.json().get("seasons", [])
+        if seasons:
+            info = seasons[0]
+            start_str = info.get("regularSeasonStartDate")
+            end_str = info.get("regularSeasonEndDate")
+            today_str = datetime.date.today().isoformat()
+            if start_str and today_str < start_str:
+                return None
+            if end_str:
+                effective_str = min(end_str, today_str)
+                return datetime.date.fromisoformat(effective_str)
+    except Exception:
+        pass
+    today = datetime.date.today()
+    if season < today.year:
+        return datetime.date(season, 9, 30)
+    elif season == today.year:
+        return datetime.date(season, 9, 30) if today.month >= 10 else today
+    return None
+
+
+def fetch_last30(
+    season: int | None = None,
+    end_date: datetime.date | None = None,
+) -> tuple[dict[int, float], dict[int, float]]:
     """Return ``({pid: AVG}, {pid: ERA})`` over the 30 real days ending on
-    end_date (defaults to today), disk-cached per day (6h TTL)."""
-    end = end_date or datetime.date.today()
+    end_date or the season's effective regular-season end (defaults to today
+    if in-progress, or the season's final regular-season day if concluded),
+    disk-cached per day (6h TTL). If the season has not started or is a future
+    season, returns ``({}, {})``."""
+    end = end_date or get_trailing_window_end_date(season)
+    if end is None:
+        return {}, {}
+
     day = end.strftime("%Y%m%d")
     cache_dir = _cache_dir()
 
