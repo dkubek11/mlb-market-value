@@ -21,9 +21,9 @@ services:
     image: postgres:16-alpine
     container_name: mlb-mv-db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: mlb_market_value
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-mlb_market_value}
     volumes:
       - mlb_mv_pgdata:/var/lib/postgresql/data
     # Host port 5432 is occupied by a system Postgres; the API talks to `db`
@@ -45,7 +45,9 @@ services:
       dockerfile: Dockerfile
     container_name: mlb-mv-api
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/mlb_market_value
+      # POSTGRES_PASSWORD is embedded in the URL, so use a URL-safe local
+      # password (or percent-encode reserved characters).
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-mlb_market_value}
       # Which season to ingest (with salaries) and how many prior seasons to
       # backfill (without salaries, for projection history). If SEASON is unset,
       # run_all defaults to the current calendar year; set explicitly for
