@@ -1,3 +1,4 @@
+import base64
 import datetime
 import json
 import os
@@ -35,6 +36,7 @@ _DASHBOARD_JS_PARTS = (
     "home.js",
     "tables.js",
     "teams.js",
+    "team-view.js",
     "scoring.js",
     "weights.js",
     "custom.js",
@@ -45,12 +47,26 @@ if str(_DASHBOARD_DIR) not in sys.path:
     sys.path.insert(0, str(_DASHBOARD_DIR))
 from build_dashboard import build_dashboard_data  # noqa: E402
 
-_FONT_PLACEHOLDERS = {
-    "__RYE_FONT__": "rye.b64",
-    "__COURIER_REGULAR_FONT__": "courier-regular.b64",
-    "__COURIER_BOLD_FONT__": "courier-bold.b64",
-    "__NOISE_TEXTURE__": "noise.b64",
+# Fonts are loaded by the browser (Inter + Space Mono) so there are no
+# remaining base64 placeholders to splice in.
+_FONT_PLACEHOLDERS: dict[str, str] = {}
+
+# League marks live outside parts/ and are embedded as data URIs so the page
+# remains a single self-contained document.
+_ASSET_PLACEHOLDERS = {
+    "__NL_LEAGUE_LOGO__": "National_League_logo.svg",
+    "__AL_LEAGUE_LOGO__": "American_League_logo.svg",
 }
+
+
+def _asset_data_uri(filename: str) -> str:
+    path = _DASHBOARD_DIR / "assets" / filename
+    try:
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    except OSError:
+        return ""
+    mime = "image/svg+xml" if path.suffix.lower() == ".svg" else "application/octet-stream"
+    return f"data:{mime};base64,{encoded}"
 
 # A snapshot build runs DB queries, projections, and best-effort live scrapes,
 # so results are cached in two layers:
@@ -66,8 +82,18 @@ _SNAPSHOT_CACHE_DIR = _DASHBOARD_DIR / ".snapshot_cache"
 _dashboard_cache: dict[int, tuple[float, str]] = {}
 _fonts_cache: dict[str, str] | None = None
 _template_cache: str | None = None
+_template_mtime: float = 0.0
 _refresh_flags: dict[int, bool] = {}
 _state_lock = threading.Lock()
+
+
+def _parts_latest_mtime() -> float:
+    try:
+        paths = [f for f in _DASHBOARD_PARTS_DIR.rglob("*") if f.is_file()]
+        paths += [_DASHBOARD_DIR / "assets" / name for name in _ASSET_PLACEHOLDERS.values()]
+        return max(f.stat().st_mtime for f in paths if f.is_file())
+    except Exception:
+        return 0.0
 
 
 def _snapshot_path(season: int) -> Path:
@@ -103,16 +129,29 @@ def _assemble_template() -> str:
     def read(rel: str) -> str:
         return (_DASHBOARD_PARTS_DIR / rel).read_text(encoding="utf-8")
 
-    html = read("head.html") + read("topbar.html") + read("views.html") + "<script>\n"
+    head = read("head.html").replace("__DASHBOARD_CSS__", read("styles.css"))
+    views = read("views.html")
+    for placeholder, filename in _ASSET_PLACEHOLDERS.items():
+        views = views.replace(placeholder, _asset_data_uri(filename))
+    html = (
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
+        + head
+        + "</head>\n<body>\n<div class=\"app-layout\">\n"
+        + read("topbar.html")
+        + views
+        + "</div>\n<script>\n"
+    )
     for name in _DASHBOARD_JS_PARTS:
         html += read(f"js/{name}")
-    return html + "</script>\n"
+    return html + "</script>\n</body>\n</html>\n"
 
 
 def _render_dashboard(season: int, data: dict | None = None, refresh: bool = False) -> str:
-    global _fonts_cache, _template_cache
-    if _template_cache is None or refresh:
+    global _fonts_cache, _template_cache, _template_mtime
+    latest_mtime = _parts_latest_mtime()
+    if _template_cache is None or refresh or latest_mtime > _template_mtime:
         _template_cache = _assemble_template()
+        _template_mtime = latest_mtime
     if _fonts_cache is None or refresh:
         _fonts_cache = {
             ph: (_DASHBOARD_DIR / fn).read_text(encoding="utf-8").strip()
@@ -190,13 +229,14 @@ def dashboard(
     restarts; on TTL expiry the stale page is served while a fresh snapshot is
     computed in the background. ?refresh=1 forces a synchronous rebuild."""
     now = time.time()
+    parts_mtime = _parts_latest_mtime()
     cached = _dashboard_cache.get(season)
-    if cached and not refresh and (now - cached[0]) < _DASHBOARD_CACHE_TTL_SECONDS:
+    if cached and not refresh and (now - cached[0]) < _DASHBOARD_CACHE_TTL_SECONDS and cached[0] >= parts_mtime:
         return HTMLResponse(cached[1])
 
     snapshot, mtime = _load_snapshot(season)
     if snapshot is not None and not refresh:
-        html = _render_dashboard(season, snapshot)
+        html = _render_dashboard(season, snapshot, refresh=(parts_mtime > _template_mtime))
         _dashboard_cache[season] = (now, html)
         if (now - mtime) >= _DASHBOARD_CACHE_TTL_SECONDS:
             _kick_off_refresh(season)
