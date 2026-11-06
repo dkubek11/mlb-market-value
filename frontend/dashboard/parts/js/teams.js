@@ -64,7 +64,7 @@
       const open = expandedTeam === t.abbr;
       const row = `
       <tr class="row-toggle" data-abbr="${t.abbr}">
-        <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${teamLogoImg(t.abbr, 18)}${t.name}</span><span class="team-tag">${t.abbr}</span></div></td>
+        <td><span class="chevron${open ? ' open' : ''}">▸</span><div class="name-cell" style="display:inline-flex"><span>${teamLogoImg(t.abbr, 18)}${t.name}</span><span class="team-tag">${t.abbr}</span><a class="preview-link" href="#/team/${t.abbr}" data-team-page="${t.abbr}">Team page →</a></div></td>
         <td class="num" data-count="${t.payroll}" data-count-fmt="money">${fmtMoney(t.payroll)}</td>
         <td class="num">${valueBar(t.avgScore, maxAbs)}</td>
         <td class="num ${t.lineupScore >= 0 ? 'good' : 'bad'}">${fmtSigned(t.lineupScore)}</td>
@@ -72,58 +72,25 @@
         <td class="num ${t.bullpenScore >= 0 ? 'good' : 'bad'}">${fmtSigned(t.bullpenScore)}</td>
       </tr>`;
       return row + (open ? renderDiamondPanel(t, open && !pendingTeamOpen) : '');
-    }).join('') : '<tr><td colspan="3"><div class="empty">No teams match that filter.</div></td></tr>';
+    }).join('') : '<tr><td colspan="6"><div class="empty">No teams match that filter.</div></td></tr>';
   }
 
-  // Carousel "Show More National League / American League Teams" jump: set the
-  // dropdown filter to that league and open the Teams tab.
-  function openTeamsLeague(lg) {
-    teamsFilter = { league: lg, division: 'All', team: 'All' };
-    cascadeOpen = false;
-    renderTeams();
-    switchTab('teams');
-    try { history.replaceState(null, '', '#teams:' + lg); } catch (e) { /* ignore */ }
-  }
-
-  // The topbar "Teams" dropdown mirrors the same League > Division > Team
-  // hierarchy: leagues expand to divisions, divisions expand to their 5
-  // teams, and clicking a team jumps to the Teams tab filtered to that team.
+  // The topbar "Teams" dropdown is a flat League > Division > Team list whose
+  // team links go straight to the new team page.
   function renderNavTeamsMenu() {
-    document.getElementById('nav-teams-menu').innerHTML = LEAGUES.map(lg => `
-      <div class="nav-drop">
-        <button class="nav-drop-item nav-sub-toggle" type="button" aria-expanded="false">${LEAGUE_LABELS[lg]} <span class="caret">▸</span></button>
-        <div class="nav-drop-menu">
-          ${DIVISIONS.filter(d => d.startsWith(lg)).map(div => `
-            <div class="nav-drop">
-              <button class="nav-drop-item nav-sub-toggle" type="button" aria-expanded="false">${div} <span class="caret">▸</span></button>
-              <div class="nav-drop-menu">
-                ${teams.filter(t => t.division === div).map(t => `<button class="nav-drop-item nav-team-link" data-team="${t.abbr}">${t.name}</button>`).join('')}
-              </div>
-            </div>`).join('')}
-        </div>
-      </div>`).join('');
+    const menu = document.getElementById('nav-teams-menu');
+    if (!menu) return;
+    menu.innerHTML = LEAGUES.map(lg => `
+      <div class="nav-dd-division">${LEAGUE_LABELS[lg]}</div>
+      ${DIVISIONS.filter(d => d.startsWith(lg)).map(div => `
+        <div class="nav-dd-back">${div}</div>
+        ${teams.filter(t => t.division === div).map(t =>
+          `<a class="nav-dd-team" href="#/team/${t.abbr}">${teamLogoImg(t.abbr, 13)}${t.name}</a>`
+        ).join('')}
+      `).join('')}
+    `).join('');
   }
   renderNavTeamsMenu();
-  document.getElementById('nav-teams-menu').addEventListener('click', e => {
-    const toggle = e.target.closest('.nav-sub-toggle');
-    if (toggle) {
-      // Expand/collapse this league or division without closing ancestor menus.
-      e.stopPropagation();
-      const drop = toggle.parentElement;
-      const open = drop.classList.toggle('open');
-      toggle.setAttribute('aria-expanded', String(open));
-      return;
-    }
-    const teamBtn = e.target.closest('[data-team]');
-    if (teamBtn) {
-      const t = teams.find(x => x.abbr === teamBtn.dataset.team);
-      if (t) teamsFilter = { league: t.league, division: t.division, team: t.abbr };
-      cascadeOpen = false;
-      document.querySelectorAll('.nav-drop').forEach(d => d.classList.remove('open'));
-      renderTeams();
-      switchTab('teams');
-    }
-  });
 
   document.getElementById('teams-cascade').addEventListener('click', e => {
     // Re-rendering replaces the container's nodes, which would detach the
@@ -186,6 +153,7 @@
 
   document.getElementById('team-search').addEventListener('input', renderTeams);
   document.getElementById('team-rows').addEventListener('click', e => {
+    if (e.target.closest('[data-team-page]')) return;
     const marker = e.target.closest('.pos-marker');
     if (marker && marker.dataset.pid) {
       const record = findPlayerRecord(Number(marker.dataset.pid), marker.dataset.pos);
@@ -308,10 +276,10 @@
   let pendingTeamClose = false;
 
   function renderDiamondPanel(team, expanded) {
-    return `<tr class="diamond-row" data-abbr="${team.abbr}"><td colspan="7"><div class="diamond-accordion${expanded ? ' expanded' : ''}"><div class="diamond-accordion-inner">
+    return `<tr class="diamond-row" data-abbr="${team.abbr}"><td colspan="6"><div class="diamond-accordion${expanded ? ' expanded' : ''}"><div class="diamond-accordion-inner">
       <div class="diamond-panel">
         <div class="diamond-head">
-          <h3>${teamLogoImg(team.abbr, 24)}${team.name} — 2026 roster by position</h3>
+          <h3>${teamLogoImg(team.abbr, 24)}${team.name} — ${CURRENT_SEASON} roster by position</h3>
           <span class="diamond-sub">Top player by playing time at each spot — "not qualified" means below the scoring minimum (150 PA / 50 IP)</span>
         </div>
         <div class="diamond-wrap">${renderDiamondSvg(team.abbr)}</div>
