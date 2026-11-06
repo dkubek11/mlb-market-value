@@ -67,7 +67,7 @@
 
     const noteEl = document.getElementById('fa-note');
     if (noteEl) {
-      noteEl.textContent = 'Contract estimates come from an fWAR projection (Marcel-style: last three seasons weighted 5-4-3 by playing time, regressed toward league average, aged forward) priced at $11.23M per WAR rising 4% a year. A year is guaranteed only while projected WAR stays at or above 1.2 (0.6 for relievers), never past age 38, and never beyond the 5-year projection window (so long deals for young stars are understated). These are model outputs, not predictions of what a team will sign; qualifying offers, injuries, and market competition are not modeled. Free-agent timing for team-controlled players uses an estimated service-time figure when MLB\'s is not available.';
+      noteEl.textContent = 'Contract estimates come from an fWAR projection (Marcel-style: last three seasons weighted 5-4-3 by playing time, regressed toward league average, then calibrated to how past projections of this size actually turned out, aged forward) priced at a flat $11.23M per WAR. A year is guaranteed only while projected WAR stays at or above 1.0 (0.5 for relievers), never past age 38, and never beyond the 5-year projection window (so long deals for young stars are understated). These are model outputs, not predictions of what a team will sign; qualifying offers, injuries, and market competition are not modeled. Free-agent timing for team-controlled players uses an estimated service-time figure when MLB\'s is not available.';
     }
 
     faRowsCurrent = rows;

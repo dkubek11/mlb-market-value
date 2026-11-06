@@ -10,9 +10,12 @@ fWAR rather than to process stats:
     3. Regress toward league average by adding one full season of
        league-average performance to the weighted sum -- the guard against one
        fluky year.
-    4. Scale to a realistic workload (560 PA / 165 IP / 60 IP).
-    5. Walk the result forward five seasons with a per-year aging step in WAR.
-    6. Price each season at DOLLARS_PER_WAR, inflating INFLATION a year.
+    4. Calibrate that rate with CALIBRATION: a backtest showed the Marcel rate
+       alone runs hot (see below), so it is mapped to what projections of that
+       size actually delivered.
+    5. Scale to a realistic workload (560 PA / 165 IP / 60 IP).
+    6. Walk the result forward five seasons with a per-year aging step in WAR.
+    7. Price each season at DOLLARS_PER_WAR, inflating INFLATION a year.
 
 The contract estimate guarantees a year only while the projected WAR stays at
 or above EXTEND_MIN_WAR (a team won't commit a roster spot to a player it
@@ -21,13 +24,24 @@ the dollar value of exactly those years. The projection window is HORIZON
 seasons, so no estimated deal runs longer than that. It is a model output, not a forecast of what a team will sign --
 the rounding and negotiating judgment a human adds is not in here.
 
+Calibration (backtest): project season t+1 from fWAR history through t, for
+t = 2023, 2024, 2025 (players with at least three-quarters of a season of
+history, then enough playing time the next year), and fit
+    actual full-season rate = a * projected rate + b.
+Slope below 1 means the uncalibrated projection was too spread out: it let a
+hot recent season carry almost fully into the future (only ~8% of the weight
+was pulled toward average, where the backtest says ~30% is right). Fits:
+hitters .71 x + .41 (n=650), starters .77 x + .45 (n=245), relievers
+.64 x + .04 (n=515). Re-fit these when more seasons are available.
+
 Why fWAR and not the bWAR the Score uses: fWAR is the better forward-looking
 number for the same player (it credits catcher framing and uses FIP-based
 pitcher value), and the dashboard's Score deliberately ranks what a player
 produced, not what he is projected to do.
 
-The rates below are assumptions, not values fit to this database; they are
-named constants so they are easy to change.
+CALIBRATION is fit to this database's own history (backtest above). The other
+rates below -- aging steps, $/WAR, workload, keep-line -- are assumptions, not
+fitted values; they are named constants so they are easy to change.
 """
 
 import pandas as pd
@@ -46,9 +60,13 @@ LEAGUE_AVG_WAR = {"batter": 2.4, "SP": 2.0, "RP": 0.5}  # fWAR per full season; 
 
 HORIZON = 5
 DOLLARS_PER_WAR = 11.23e6  # FanGraphs research on $/WAR (market average)
-INFLATION = 0.04  # per year, compounding from the second season
+INFLATION = 0.0  # per year price growth on later seasons. Off: it compounded onto
+# the late years of long deals, which carry the most risk, so flat $/WAR stands in
+# for a risk discount on them.
 # Keep guaranteeing years while projected WAR is at least this.
-EXTEND_MIN_WAR = {"batter": 1.2, "SP": 1.2, "RP": 0.6}
+EXTEND_MIN_WAR = {"batter": 1.0, "SP": 1.0, "RP": 0.5}
+# actual full-season rate = slope * projected rate + intercept (see module docstring)
+CALIBRATION = {"batter": (0.71, 0.41), "SP": (0.77, 0.45), "RP": (0.64, 0.04)}
 MAX_END_AGE = 38  # the last guaranteed season is at or before the year he turns this age
 
 
@@ -99,7 +117,8 @@ def project(rows: list[dict], role: str, age_next: float | None) -> dict | None:
         num += weight * r["vol"] * rate
         den += weight * r["vol"]
     regressed = (num + full * lg) / (den + full)  # one league-average season of ballast
-    base = regressed * EXPECTED_WORKLOAD[role] / full
+    slope, intercept = CALIBRATION[role]
+    base = (slope * regressed + intercept) * EXPECTED_WORKLOAD[role] / full
 
     war: list[float] = []
     cur, age = base, int(age_next) if age_next is not None else 29
