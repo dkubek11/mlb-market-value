@@ -40,6 +40,7 @@ from app.pipeline.projections import (
     compute_batter_projections,
     compute_pitcher_projections,
 )
+from app.pipeline import war_projection
 
 # Co-locate the trailing-stats cache with the snapshot caches so the HTML
 # snapshot (build_dashboard_data) and the JSON payload share one cached fetch.
@@ -142,6 +143,7 @@ def _to_record(
     proj_map: dict[int, dict],
     proj_stat_keys: list[str],
     last30_map: dict[int, float] | None = None,
+    war_outlook: dict[str, dict[int, dict]] | None = None,
 ) -> dict:
     proj = proj_map.get(int(r.player_id), {})
     return {
@@ -161,6 +163,12 @@ def _to_record(
         # regression + comparable-player projections; see projections.py).
         "projected": {s: _clean(proj.get(s)) for s in proj_stat_keys},
         "nComps": proj.get("nComps", 0),
+        # Projected fWAR for each of the next 5 seasons plus the open-market
+        # contract it implies (see war_projection.py). None without fWAR history.
+        "warOutlook": (
+            war_outlook["batter" if is_batter else "pitcher"].get(int(r.player_id))
+            if war_outlook else None
+        ),
         # Real AVG (batters) / ERA (pitchers) over the trailing 30 real days
         # (not season-to-date) -- None if the player didn't clear the
         # playing-time floor in that window. Powers the Home-tab Hot vs Cold
@@ -251,6 +259,13 @@ def build_dashboard_payload(season: int, *, fetch_live_contracts: bool = True) -
     batter_proj = blend_projections(batter_marcel, batter_comp, list(BATTER_PROJECTION_STATS.keys()))
     pitcher_proj = blend_projections(pitcher_marcel, pitcher_comp, list(PITCHER_PROJECTION_STATS.keys()))
 
+    # Five-year fWAR outlook + open-market contract estimate (see
+    # war_projection.py). Separate from the process-stat projections above.
+    print(f"[{season}] projecting 5-year fWAR and contract estimates...")
+    war_outlook = war_projection.build(
+        season, {int(pid): pos for pid, pos in zip(pitchers["player_id"], pitchers["position"])}
+    )
+
     print(f"[{season}] fetching trailing 30-day stats for Hot vs Cold...")
     last30_batting, last30_pitching = fetch_last30(season=season)
     print(f"  last30: {len(last30_batting)} batters, {len(last30_pitching)} pitchers clear the playing-time floor")
@@ -274,8 +289,8 @@ def build_dashboard_payload(season: int, *, fetch_live_contracts: bool = True) -
             )
 
     all_players = (
-        [ _to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys(), last30_batting) for r in batters.itertuples() ]
-        + [ _to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys(), last30_pitching) for r in pitchers.itertuples() ]
+        [ _to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys(), last30_batting, war_outlook) for r in batters.itertuples() ]
+        + [ _to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys(), last30_pitching, war_outlook) for r in pitchers.itertuples() ]
     )
 
     print(f"[{season}] building team payroll + rosters (all rostered players, not just qualifiers)...")
