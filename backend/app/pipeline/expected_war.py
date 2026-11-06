@@ -126,6 +126,15 @@ def _unpack(beta, feat_cols, ex_cols):
 def _fit_group(df: pd.DataFrame, features: dict, group: str, season: int) -> dict:
     train = df[(df["season"] < season) & ~df["season"].isin(SKIP_SEASONS)
                & (df["season"] >= FIRST_SEASON) & df["bwar"].notna()].reset_index(drop=True)
+    # Single-season / fresh databases have no completed seasons to train on.
+    # Return a neutral model instead of crashing the dashboard; the frontend
+    # falls back to actual bWAR for Predicted Score when nTrain is 0.
+    if train.empty:
+        return {
+            "weights": {c: 0.0 for c in features}, "offsets": {}, "intercept": 0.0,
+            "volumeScale": BATTER_VOLUME_SCALE if group == "batter" else PITCHER_VOLUME_SCALE,
+            "cvR2": 0.0, "nTrain": 0, "trainSeasons": "n/a", "residSdWar": 0.0,
+        }
     X = _z_within_season(train, features)
     E = _extra(train, group)
     ex_cols = list(E.columns)

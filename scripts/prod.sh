@@ -8,9 +8,9 @@
 #   1. Applies migrations (idempotent).
 #   2. Runs uvicorn (no reload) on :8000.
 #
-# The dashboard is rendered live by the API (the / route inlines the current
-# data snapshot + fonts into dashboard_template.html on request) — there is no
-# offline HTML build step.
+# The dashboard is rendered live by the API (the / route assembles
+# frontend/dashboard/parts/ and inlines the current data snapshot + fonts on
+# request) — there is no offline HTML build step.
 #
 # Database: SQLite by default. Override with DATABASE_URL.
 # Requires: backend/.venv.
