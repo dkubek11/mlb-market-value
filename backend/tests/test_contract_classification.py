@@ -96,9 +96,58 @@ def test_extended_players_not_classified_as_free_agents():
       throw new Error('FAIL: Luis Torrens contract label should not be Arb');
     }
 
+    // 5. Veteran Free Agents should retain Free Agent contractType and not be overwritten to Extension
+    const veteranFa = allPlayers.find(p => p.id === 518692); // Freddie Freeman
+    if (veteranFa && veteranFa.contractType !== 'Free Agent') {
+      throw new Error('FAIL: Freddie Freeman (518692) should have contractType Free Agent, got: ' + veteranFa.contractType);
+    }
+
     console.log('OK: Contract classification tests passed');
     """
 
     res = subprocess.run(["node", "-e", script], cwd=Path(__file__).parent, capture_output=True, text=True)
     assert res.returncode == 0, f"Test failed with output:\n{res.stderr}\n{res.stdout}"
     assert "OK: Contract classification tests passed" in res.stdout
+
+
+def test_contracts_sync_types_and_no_overwriting_veteran_free_agents():
+    """Verify that contracts dictionary lookups handle both int and string keys,
+    and that multi-year veteran Free Agent contracts (e.g. Freddie Freeman, Shohei Ohtani)
+    are NOT erroneously overwritten to 'Extension'.
+    """
+    contracts = {
+        "620443": {  # Luis Torrens - int id as string key in json cache
+            "contractType": "Extension",
+            "endSeasonAll": 2028,
+        },
+        518692: {   # Freddie Freeman - Free Agent contract through 2027
+            "contractType": "Free Agent",
+            "endSeasonAll": 2027,
+        },
+    }
+    all_players = [
+        {"id": 620443, "name": "Luis Torrens", "contractType": "Arbitration (Guaranteed Section)"},
+        {"id": 518692, "name": "Freddie Freeman", "contractType": "Free Agent"},
+    ]
+    season = 2026
+
+    # Apply synchronization logic
+    for p in all_players:
+        c = contracts.get(p["id"]) or contracts.get(str(p["id"]))
+        if c:
+            if c.get("contractType") == "Extension":
+                p["contractType"] = "Extension"
+            elif c.get("contractType") == "Free Agent":
+                p["contractType"] = "Free Agent"
+            elif c.get("endSeasonAll") and c["endSeasonAll"] > season and (
+                p.get("contractType") in {"Arbitration", "Pre-Arbitration", "Free Agent/Arb"}
+                or (p.get("contractType") and "Guaranteed Sect" in p["contractType"])
+            ):
+                p["contractType"] = "Extension"
+
+    torrens = next(p for p in all_players if p["id"] == 620443)
+    freeman = next(p for p in all_players if p["id"] == 518692)
+
+    assert torrens["contractType"] == "Extension", f"Expected Torrens to be Extension, got {torrens['contractType']}"
+    assert freeman["contractType"] == "Free Agent", f"Expected Freeman to remain Free Agent, got {freeman['contractType']}"
+

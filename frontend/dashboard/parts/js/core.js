@@ -149,7 +149,7 @@
       return false;
     }
     const ct = p.contractType || '';
-    if (ct.includes('Guaranteed Section')) return false;
+    if (ct.includes('Guaranteed Sect')) return false;
     return /^Arbitration/.test(ct) || ct === 'Free Agent/Arb';
   }
 
@@ -183,7 +183,7 @@
     if (contract && contract.contractType === 'Extension') {
       return { label: 'Extension', cls: '' };
     }
-    if (p.contractType && p.contractType.includes('Guaranteed Section')) {
+    if (p.contractType && p.contractType.includes('Guaranteed Sect')) {
       return { label: 'Extension', cls: '' };
     }
     if (isArbEligible(p)) return { label: 'Arb', cls: 'highlight' };

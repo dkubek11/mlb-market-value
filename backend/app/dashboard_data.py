@@ -147,7 +147,7 @@ def _to_record(
 ) -> dict:
     proj = proj_map.get(int(r.player_id), {})
     contract_type = r.contract_type
-    if contract_type and "Guaranteed Section" in contract_type:
+    if contract_type and "Guaranteed Sect" in contract_type:
         contract_type = "Extension"
     return {
         "id": int(r.player_id),
@@ -324,9 +324,17 @@ def build_dashboard_payload(season: int, *, fetch_live_contracts: bool = True) -
     contracts = _fetch_contracts() if fetch_live_contracts else {}
 
     for p in all_players:
-        c = contracts.get(p["id"])
-        if c and (c.get("contractType") == "Extension" or (c.get("endSeasonAll") and c["endSeasonAll"] > season)):
-            p["contractType"] = "Extension"
+        c = contracts.get(p["id"]) or contracts.get(str(p["id"]))
+        if c:
+            if c.get("contractType") == "Extension":
+                p["contractType"] = "Extension"
+            elif c.get("contractType") == "Free Agent":
+                p["contractType"] = "Free Agent"
+            elif c.get("endSeasonAll") and c["endSeasonAll"] > season and (
+                p.get("contractType") in {"Arbitration", "Pre-Arbitration", "Free Agent/Arb"}
+                or (p.get("contractType") and "Guaranteed Sect" in p["contractType"])
+            ):
+                p["contractType"] = "Extension"
 
     with open(_TEAM_COLORS_PATH, encoding="utf-8") as f:
         team_colors = json.load(f)

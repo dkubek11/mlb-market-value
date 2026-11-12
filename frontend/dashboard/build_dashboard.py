@@ -596,7 +596,7 @@ def build_dashboard_data(season: int) -> dict:
             service_years = season - _as_date(debut_date).year if debut_date is not None and pd.notna(debut_date) and _as_date(debut_date) else None
             service_years_exact = False
         contract_type = r.contract_type
-        if contract_type and "Guaranteed Section" in contract_type:
+        if contract_type and "Guaranteed Sect" in contract_type:
             contract_type = "Extension"
         return {
             "id": int(r.player_id),
@@ -753,9 +753,17 @@ def build_dashboard_data(season: int) -> dict:
         contracts = {}
 
     for p in all_players:
-        c = contracts.get(p["id"])
-        if c and (c.get("contractType") == "Extension" or (c.get("endSeasonAll") and c["endSeasonAll"] > season)):
-            p["contractType"] = "Extension"
+        c = contracts.get(p["id"]) or contracts.get(str(p["id"]))
+        if c:
+            if c.get("contractType") == "Extension":
+                p["contractType"] = "Extension"
+            elif c.get("contractType") == "Free Agent":
+                p["contractType"] = "Free Agent"
+            elif c.get("endSeasonAll") and c["endSeasonAll"] > season and (
+                p.get("contractType") in {"Arbitration", "Pre-Arbitration", "Free Agent/Arb"}
+                or (p.get("contractType") and "Guaranteed Sect" in p["contractType"])
+            ):
+                p["contractType"] = "Extension"
 
     print(f"[{season}] querying real historical arbitration outcomes...")
     arb_hist_batters = pd.read_sql(ARB_HISTORY_BATTER_Q, engine)

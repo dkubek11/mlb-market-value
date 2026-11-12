@@ -119,7 +119,7 @@
       return false;
     }
     const ct = p.contractType || '';
-    if (ct.includes('Guaranteed Section')) return false;
+    if (ct.includes('Guaranteed Sect')) return false;
     return /^Arbitration/.test(ct) || ct === 'Free Agent/Arb';
   }
   // Real CBA rule: free agency hits at 6.000 years of service. Players who
