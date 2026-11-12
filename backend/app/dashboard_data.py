@@ -146,6 +146,9 @@ def _to_record(
     war_outlook: dict[str, dict[int, dict]] | None = None,
 ) -> dict:
     proj = proj_map.get(int(r.player_id), {})
+    contract_type = r.contract_type
+    if contract_type and "Guaranteed Section" in contract_type:
+        contract_type = "Extension"
     return {
         "id": int(r.player_id),
         "name": r.full_name,
@@ -155,7 +158,7 @@ def _to_record(
         "isPreArb": bool(r.is_pre_arb),
         "salary": round(float(r.salary)),
         "aav": round(float(r.aav)),
-        "contractType": r.contract_type,
+        "contractType": contract_type,
         "stats": {s: _clean(getattr(r, s)) for s in stat_keys},
         "age": _clean(proj.get("age")),
         # Projected true-talent values, keyed the same as "stats" so any stat
@@ -319,6 +322,11 @@ def build_dashboard_payload(season: int, *, fetch_live_contracts: bool = True) -
         rosters.setdefault(team, {})[pos] = {"id": int(top.player_id), "name": top.full_name}
 
     contracts = _fetch_contracts() if fetch_live_contracts else {}
+
+    for p in all_players:
+        c = contracts.get(p["id"])
+        if c and (c.get("contractType") == "Extension" or (c.get("endSeasonAll") and c["endSeasonAll"] > season)):
+            p["contractType"] = "Extension"
 
     with open(_TEAM_COLORS_PATH, encoding="utf-8") as f:
         team_colors = json.load(f)

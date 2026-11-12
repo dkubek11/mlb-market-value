@@ -144,7 +144,12 @@
   // --- Shared Player Value, Roster Formatting & Driver Helpers ---
   function isArbEligible(p) {
     if (!p || p.isPreArb) return false;
+    const contract = contracts[p.id];
+    if (contract && (contract.contractType === 'Extension' || contract.endSeasonAll > CURRENT_SEASON)) {
+      return false;
+    }
     const ct = p.contractType || '';
+    if (ct.includes('Guaranteed Section')) return false;
     return /^Arbitration/.test(ct) || ct === 'Free Agent/Arb';
   }
 
@@ -174,6 +179,13 @@
   function contractLabel(p) {
     if (!p) return { label: '—', cls: '' };
     if (p.isPreArb) return { label: 'Pre-Arb', cls: 'pre-arb' };
+    const contract = contracts[p.id];
+    if (contract && contract.contractType === 'Extension') {
+      return { label: 'Extension', cls: '' };
+    }
+    if (p.contractType && p.contractType.includes('Guaranteed Section')) {
+      return { label: 'Extension', cls: '' };
+    }
     if (isArbEligible(p)) return { label: 'Arb', cls: 'highlight' };
     return { label: p.contractType || 'Veteran', cls: '' };
   }

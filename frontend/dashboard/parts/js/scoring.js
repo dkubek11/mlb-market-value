@@ -113,8 +113,13 @@
   // from years since MLB debut (serviceYears) -- not the same as true accrued
   // service time (call-up timing, options days, etc. aren't captured).
   function isArbEligible(p) {
-    if (p.isPreArb) return false;
+    if (!p || p.isPreArb) return false;
+    const contract = contracts[p.id];
+    if (contract && (contract.contractType === 'Extension' || contract.endSeasonAll > CURRENT_SEASON)) {
+      return false;
+    }
     const ct = p.contractType || '';
+    if (ct.includes('Guaranteed Section')) return false;
     return /^Arbitration/.test(ct) || ct === 'Free Agent/Arb';
   }
   // Real CBA rule: free agency hits at 6.000 years of service. Players who

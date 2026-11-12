@@ -159,6 +159,12 @@
   // veteran mid-contract isn't "nearing free agency" just because their
   // service time is deep past 6.000).
   function isNearingFreeAgency(p) {
+    const contract = contracts[p.id];
+    // If player has a verified contract with guaranteed years beyond this season,
+    // they cannot be a free agent (e.g. extensions signed by arb/pre-arb players).
+    if (contract && contract.endSeasonAll > CURRENT_SEASON) {
+      return false;
+    }
     if (p.isPreArb || isArbEligible(p)) {
       return p.serviceYears != null && p.serviceYears + 1 >= 6.0;
     }
@@ -167,7 +173,6 @@
     // player with no contract record at all has no deal for next season -- he
     // is the free agent, not an unknown. (In-season every signed player has a
     // record.)
-    const contract = contracts[p.id];
     return !contract || contract.endSeasonAll <= CURRENT_SEASON;
   }
 

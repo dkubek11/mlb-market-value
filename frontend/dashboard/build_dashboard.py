@@ -595,6 +595,9 @@ def build_dashboard_data(season: int) -> dict:
         else:
             service_years = season - _as_date(debut_date).year if debut_date is not None and pd.notna(debut_date) and _as_date(debut_date) else None
             service_years_exact = False
+        contract_type = r.contract_type
+        if contract_type and "Guaranteed Section" in contract_type:
+            contract_type = "Extension"
         return {
             "id": int(r.player_id),
             "name": r.full_name,
@@ -606,7 +609,7 @@ def build_dashboard_data(season: int) -> dict:
             "serviceYearsExact": service_years_exact,
             "salary": round(float(r.salary)),
             "aav": round(float(r.aav)),
-            "contractType": r.contract_type,
+            "contractType": contract_type,
             "stats": {s: clean(getattr(r, s)) for s in stat_keys},
             # Inputs for the expected-bWAR (Predicted Score) model: playing-time
             # volume (PA/600 or IP/100) and each model stat standardized and
@@ -748,6 +751,11 @@ def build_dashboard_data(season: int) -> dict:
         # else: keep the stale copy already loaded, or {} if we never had one
     if contracts is None:
         contracts = {}
+
+    for p in all_players:
+        c = contracts.get(p["id"])
+        if c and (c.get("contractType") == "Extension" or (c.get("endSeasonAll") and c["endSeasonAll"] > season)):
+            p["contractType"] = "Extension"
 
     print(f"[{season}] querying real historical arbitration outcomes...")
     arb_hist_batters = pd.read_sql(ARB_HISTORY_BATTER_Q, engine)
