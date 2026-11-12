@@ -6,6 +6,9 @@ __pycache__/
 !.env.example
 node_modules/
 dist/
+
+*.zip
+.netlify/
 build/
 .idea/
 *.log
@@ -42,3 +45,7 @@ frontend/dashboard/.snapshot_cache/
 # Kilo tooling session state (agent-manager plans, worktrees)
 .kilo/plans/
 .kilo/worktrees/
+
+# Worktree session isolation
+.worktrees
+.worktrees/
