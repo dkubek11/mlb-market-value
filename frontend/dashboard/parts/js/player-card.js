@@ -357,6 +357,10 @@
     const c = contracts[record.id];
     const rows = [];
     const svc = record.serviceYears || (record.isPreArb ? 1.0 : 6.0);
+    // The Free Agents tab and the Pending Free Agent box already treat this
+    // player as hitting the market this winter; the timeline below must agree
+    // instead of projecting arbitration years from service time.
+    const pendingFA = isNearingFreeAgency(record);
 
     for (let i = 0; i < 5; i++) {
       const yr = startYr + i;
@@ -370,6 +374,9 @@
       } else if (yr === CURRENT_SEASON && record.salary) {
         status = 'Under Contract';
         aav = fmtMoney(record.salary);
+      } else if (yr > CURRENT_SEASON && pendingFA) {
+        status = 'Free Agent';
+        aav = '—';
       } else if (record.contractType === 'Extension' && i === 1 && record.salary) {
         status = 'Under Contract';
         aav = fmtMoney(record.salary);
@@ -429,7 +436,7 @@
       { key: 'hr', label: 'HR', higherBetter: true, type: 'int' },
       { key: 'sb', label: 'SB', higherBetter: true, type: 'int' },
     ] : [
-      { key: 'bwar', label: 'FWAR', higherBetter: true, type: 'velo1' },
+      { key: 'bwar', label: 'BWAR', higherBetter: true, type: 'velo1' },
       { key: 'era', label: 'ERA', higherBetter: false, type: 'rate2' },
       { key: 'fip', label: 'FIP', higherBetter: false, type: 'rate2' },
       { key: 'whip', label: 'WHIP', higherBetter: false, type: 'rate2' },
@@ -717,6 +724,160 @@
       </div>`;
   }
 
+  // ---------------------------------------------------------------------------
+  // Original card content restored in the redesigned card's style. The editorial
+  // redesign dropped these boxes; the data behind every one of them is still
+  // computed in scoring.js, so nothing is recomputed here -- only displayed.
+  // ---------------------------------------------------------------------------
+
+  // A titled box with one big value and an explanatory note (the redesign's
+  // equivalent of the original card's value boxes).
+  function valueBoxHtml(title, subtitle, valueText, noteHtml) {
+    return `
+      <div class="player-card-box">
+        <div class="box-head-row"><span class="box-title">${title}</span></div>
+        <div class="box-subtitle">${subtitle}</div>
+        <div class="war-deal-line outlook-value-line"><span class="war-deal-total">${valueText}</span></div>
+        <div class="card-box-footer-note">${noteHtml}</div>
+      </div>`;
+  }
+
+  // Produced vs. expected bWAR and the Predicted Score -- the Score's
+  // repeatable-skills twin (what the process stats say should have happened).
+  function renderPredictedScoreCard(record) {
+    if (record.expectedWar == null || record.predictedScore == null) return '';
+    const bw = record.stats.bwar != null ? record.stats.bwar : 0;
+    const poolLabel = record.isBatter ? 'all hitters' : (record.position === 'SP' ? 'starters' : 'relievers');
+    const predCls = record.predictedScore >= 0 ? 'surplus-green' : 'surplus-red';
+    const gapCls = record.warGap >= 0 ? 'surplus-green' : 'surplus-red';
+    return `
+      <div class="player-card-box">
+        <div class="box-head-row"><span class="box-title">PREDICTED SCORE</span></div>
+        <div class="box-subtitle">What the repeatable process stats say should have happened</div>
+        <div class="score-metrics-list">
+          <div class="score-metric-row">
+            <span class="score-metric-label">Produced (bWAR)</span>
+            <span class="score-metric-val mono">${bw.toFixed(1)} · ${record.compPct.toFixed(1)}th pct among ${poolLabel}</span>
+          </div>
+          <div class="score-metric-row">
+            <span class="score-metric-label">Expected (bWAR)</span>
+            <span class="score-metric-val mono">${record.expectedWar.toFixed(1)}</span>
+          </div>
+          <div class="score-metric-row">
+            <span class="score-metric-label">Actual vs. Expected</span>
+            <span class="score-metric-val mono ${gapCls}">${fmtSigned(record.warGap)}</span>
+          </div>
+          <div class="score-divider"></div>
+          <div class="score-metric-row net-surplus-row">
+            <span class="score-metric-label">Predicted Score</span>
+            <span class="score-metric-val mono ${predCls}">${fmtSigned(record.predictedScore)}</span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // Arbitration value, next-season outlook, and the Pending Free Agent /
+  // Projected Free Agent Value box. Logic and wording carried over unchanged
+  // from the original card.
+  function renderOutlookCards(record) {
+    const pendingFA = isNearingFreeAgency(record);
+    const teamControlled = record.isPreArb || isArbEligible(record);
+    const acc = typeof accomplishmentsNote === 'function' ? accomplishmentsNote(record) : '';
+    let html = '';
+
+    // Pre-arb: what an Arb-1 case against real peers would look like.
+    if (record.isPreArb && record.projectedSalary != null) {
+      html += valueBoxHtml(
+        'PROJECTED ARBITRATION VALUE', 'Pre-arbitration · comped on traditional stats',
+        fmtMoney(record.projectedSalary),
+        `Comped against real Arb-1-tier peers on traditional stats (AVG/HR/RBI/wins/saves/etc.) — the stats an arbitration panel actually looks at, not advanced metrics. Assumes the standard track (~40%); Super Two eligibility (a 4th, earlier arb year) can't be predicted before a player actually reaches the tracker.${acc}`
+      );
+    }
+
+    // Arbitration-eligible: expected arb salary at their own tier vs. what they are paid.
+    if (!record.isPreArb && isArbEligible(record) && record.expectedArbSalary != null) {
+      const floorNote = record.expectedArbFloored
+        ? ` This is the CBA's max-cut floor (can't fall below 80% of last year's real pay, or 70% of two years ago), not a pure comp -- the stat-based case alone would have landed lower.`
+        : '';
+      html += valueBoxHtml(
+        'ARBITRATION VALUE', `Arbitration-eligible — ${arbYearLabel(record)}`,
+        fmtMoney(record.expectedArbSalary),
+        `Comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-adjusted to ~${Math.round(arbServicePercent(record) * 100)}%: expected <strong>${fmtMoney(record.expectedArbSalary)}</strong> vs. actual ${fmtMoney(record.aav)} AAV (${fmtSigned(record.arbSurplus / 1e6)}M).${acc}${floorNote}`
+      );
+    }
+
+    // A rookie a year or two out can't plausibly be in arbitration next season.
+    const arbPlausibleNextSeason = isArbEligible(record) || (record.serviceYears || 0) + 1 >= 2.0;
+    if (teamControlled && !pendingFA && arbPlausibleNextSeason) {
+      if (record.projectedArbSalary != null) {
+        const tierNote = !record.serviceYearsExact
+          ? ` This estimate's arbitration tier is based on an estimated (not confirmed) service-time figure.`
+          : '';
+        const floorNote = record.projectedArbFloored
+          ? (record.projectedArbFloorIsEmpirical
+              ? ` This reflects a real-world floor, not the comp above — returning arb players almost never see a cut (only ~3% of real year-over-year settlements do, and even the worst 10% still got at least a ${(ARB_RAISE_FLOOR_PCT * 100).toFixed(0)}% raise); the comp alone would have landed lower.`
+              : ` This is the CBA's max-cut floor (can't fall below 80% of this year's real pay, or 70% of last year's), not the comp above -- the comp alone would have landed lower.`)
+          : '';
+        const baseNote = record.projectedArbRaisePct != null
+          ? `Still under team control next season — projects a <strong>${fmtSigned(record.projectedArbRaisePct * 100)}%</strong> change off this year's actual pay, matched against real arb-to-arb raises other players got at a similar performance level (2016-2025, excl. 2020), not a cross-year dollar comp.`
+          : `Still under team control next season — comped against real arb-eligible peers on traditional stats (AVG/HR/RBI/wins/saves/etc.), tier-advanced to next year's expected arbitration tier. Based on this season's performance and track record, the same basis a real arbitration panel uses.`;
+        html += valueBoxHtml(
+          'NEXT-SEASON OUTLOOK', 'Projected Next-Season Arbitration Value',
+          fmtMoney(record.projectedArbSalary),
+          `${baseNote}${acc}${floorNote}${tierNote}`
+        );
+      }
+    } else if ((!teamControlled || pendingFA) && record.projectedPct != null && record.projectedMarketValue != null) {
+      const faBasisNote = pendingFA && teamControlled && !record.serviceYearsExact
+        ? ` Free-agency timing here is based on an estimated (not confirmed) service-time figure.`
+        : '';
+      html += valueBoxHtml(
+        pendingFA ? 'PENDING FREE AGENT' : 'NEXT-SEASON OUTLOOK',
+        pendingFA ? 'Projected Free Agent Value' : 'Projected Next-Season Value',
+        fmtMoney(record.projectedMarketValue),
+        `${record.projectedPct.toFixed(1)}th percentile projected performance for ${record.position} (Marcel + comparable-player blend) — ${pendingFA ? 'reaches free agency by next season, so this reflects' : 'not yet on the open market; this is'} projected future performance, not this season's stats.${faBasisNote}`
+      );
+    }
+    return html;
+  }
+
+  // The original card's full set of per-stat percentile bars (Statcast-style,
+  // vs. the player's position): the process stats the Predicted Score uses, plus
+  // fielding and running. The Batting / Pitching box above shows the headline
+  // stats; this adds the rest instead of dropping them.
+  function renderStatcastPercentilesCard(record) {
+    const cfg = record.isBatter ? BATTER_STAT_CONFIG : PITCHER_STAT_CONFIG;
+    const shownAbove = new Set(record.isBatter ? ['xwoba', 'sb'] : ['k_rate', 'bb_rate']);
+    const rows = cfg.filter(s => !shownAbove.has(s.key)).map(s => {
+      const pctl = statPercentile(record, s.key, s.higherBetter);
+      if (pctl == null) return '';
+      const barColor = percentileColor(pctl);
+      const fmtType = s.type === 'fracPct1' ? 'fracPct1' : s.type;
+      return `
+        <div class="gauge-slider-row">
+          <span class="gauge-label">${s.label.toUpperCase()}</span>
+          <div class="gauge-track">
+            <div class="gauge-fill" style="width: ${pctl}%; background: ${barColor};">
+              <span class="gauge-bubble" style="background: ${barColor};">${pctl}</span>
+            </div>
+          </div>
+          <span class="gauge-val mono">${fmtStatValue(fmtType, record.stats[s.key])}</span>
+        </div>`;
+    }).join('');
+    if (!rows) return '';
+    return `
+      <div class="player-card-box">
+        <div class="box-head-row"><span class="box-title">STATCAST PERCENTILES</span></div>
+        <div class="box-subtitle">Process stats, fielding and running, ranked vs. ${record.position}</div>
+        <div class="gauge-legend-row">
+          <span class="legend-poor">POOR</span>
+          <span class="legend-avg">AVERAGE</span>
+          <span class="legend-great">GREAT</span>
+        </div>
+        <div class="gauge-sliders-wrap">${rows}</div>
+      </div>`;
+  }
+
   function openPlayerCard(record) {
     if (!record) return;
     const colors = teamColors[record.team] || ['#3a4a42', '#1a231e'];
@@ -771,6 +932,9 @@
     const scoreHtml = renderScoreCard(record, surplus, fairMarket, contractAav);
     const contractStatusHtml = renderContractStatusCard(record);
     const warOutlookHtml = renderWarOutlookCard(record);
+    const predictedScoreHtml = renderPredictedScoreCard(record);
+    const outlookHtml = renderOutlookCards(record);
+    const statcastHtml = renderStatcastPercentilesCard(record);
     const gaugesHtml = renderPerformanceGaugesCard(record);
     const salaryPeersHtml = renderSalaryPeersCard(record, surplus);
     const historyHtml = renderFiveYearHistoryCard(record);
@@ -780,9 +944,12 @@
         ${heroHtml}
         <div class="card-content-stack">
           ${scoreHtml}
+          ${predictedScoreHtml}
           ${contractStatusHtml}
+          ${outlookHtml}
           ${warOutlookHtml}
           ${gaugesHtml}
+          ${statcastHtml}
           ${salaryPeersHtml}
           ${historyHtml}
         </div>
