@@ -28,8 +28,12 @@
   // Standard player identity cell (headshot snapshot + name + regression tag, then team logo +
   // team abbreviation + position pill) used consistently across every table.
   function playerNameCellHtml(p) {
-    return `<div class="name-cell">${headshotHtml(p, 'table-avatar')}<div class="name-meta"><span class="player-name-text">${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span></span></div></div>`;
+    const secPill = p.secondaryPosition
+      ? ` <span class="pos-pill sec-pos-pill" title="Secondary position: ${p.secondaryPosition}">${p.secondaryPosition}</span>`
+      : '';
+    return `<div class="name-cell">${headshotHtml(p, 'table-avatar')}<div class="name-meta"><span class="player-name-text">${p.name}${regressionTagHtml(p)}</span><span class="team-tag">${teamLogoImg(p.team, 13)}${p.team} · <span class="pos-pill">${p.position}</span>${secPill}</span></div></div>`;
   }
+  function nameCellHtml(p) { return playerNameCellHtml(p); }
   const marketCount = allPlayers.filter(p => !p.isPreArb).length;
   const preArbCount = allPlayers.filter(p => p.isPreArb).length;
   function matchesTeamQuery(p, q) {
@@ -169,11 +173,27 @@
 
   function tierForPlayer(p) {
     const pct = p && p.compPct != null ? p.compPct : 0;
-    if (pct >= 90) return { label: 'Great', cls: 'a', status: 'status-great' };
-    if (pct >= 75) return { label: 'Good', cls: 'b', status: 'status-good' };
-    if (pct >= 50) return { label: 'Avg', cls: 'c', status: 'status-avg' };
-    if (pct >= 30) return { label: 'Below Avg', cls: 'c', status: 'status-below' };
-    return { label: 'Poor', cls: 'd', status: 'status-poor' };
+    const surplus = playerSurplus(p);
+
+    let baseTier;
+    if (pct >= 90) baseTier = { label: 'Great', cls: 'a', status: 'status-great' };
+    else if (pct >= 75) baseTier = { label: 'Good', cls: 'b', status: 'status-good' };
+    else if (pct >= 50) baseTier = { label: 'Avg', cls: 'c', status: 'status-avg' };
+    else if (pct >= 30) baseTier = { label: 'Below Avg', cls: 'd', status: 'status-below' };
+    else baseTier = { label: 'Poor', cls: 'f', status: 'status-poor' };
+
+    // Rule: There should be no players ever with any kind of positive net surplus and considered a 'Poor'.
+    if (surplus > 0) {
+      if (baseTier.cls === 'f') {
+        return surplus >= 1700000
+          ? { label: 'Avg', cls: 'c', status: 'status-avg' }
+          : { label: 'Below Avg', cls: 'd', status: 'status-below' };
+      }
+      if (surplus >= 4000000 && baseTier.cls === 'd') {
+        return { label: 'Avg', cls: 'c', status: 'status-avg' };
+      }
+    }
+    return baseTier;
   }
 
   function contractLabel(p) {

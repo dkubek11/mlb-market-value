@@ -36,6 +36,7 @@ from app.pipeline.fangraphs_salary import TEAM_SLUG_TO_ABBREVIATION, fetch_team_
 from app.pipeline import mlbtr_arbitration
 from app.pipeline.ingest import _normalize_name
 from app.pipeline.trailing_stats import configure_cache_dir as _configure_trailing_cache, fetch_last30
+from app.dashboard_data import TWO_WAY_PLAYER_IDS, merge_and_deduplicate_players, fetch_fielding_positions
 from headshots import get_headshot_data_uri
 from logos import get_team_logo_data_uri
 
@@ -124,7 +125,7 @@ def build_dashboard_data(season: int) -> dict:
     BATTER_STATS = ["ba", "obp", "slg", "xwoba", "xba", "xslg", "hr", "rbi", "sb",
                      "barrel_rate", "hard_hit_rate", "sprint_speed",
                      "chase_rate", "whiff_rate", "k_rate", "bb_rate", "k_minus_bb", "oaa", "frv", "drs",
-                     "hits", "games", "bwar", "wrc_plus"]
+                     "hits", "games", "bwar", "fwar", "wrc_plus"]
 
 
     def _add_k_minus_bb(df: pd.DataFrame) -> pd.DataFrame:
@@ -137,7 +138,7 @@ def build_dashboard_data(season: int) -> dict:
                       "hard_hit_rate_against", "barrel_rate_against", "xba_against",
                       "avg_exit_velo_against", "chase_rate", "whiff_rate", "k_rate", "bb_rate",
                       "z_swing_rate", "extension", "stuff_plus", "location_plus",
-                      "wins", "saves", "games_started", "ip", "bwar"]
+                      "wins", "saves", "games_started", "ip", "bwar", "fwar"]
 
     BATTER_Q = text("""
         SELECT bs.player_id, p.full_name, t.abbreviation AS team, ps.position AS position,
@@ -146,12 +147,12 @@ def build_dashboard_data(season: int) -> dict:
                bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
                bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
                fs.oaa, fs.frv, fs.drs,
-               bs.hits, bs.games, bs.bwar, bs.wrc_plus
+               bs.hits, bs.games, bs.bwar, bs.war AS fwar, bs.wrc_plus
         FROM batter_stats bs
         JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
         JOIN players p ON p.player_id = bs.player_id
-        JOIN teams t ON t.team_id = ps.team_id
         LEFT JOIN player_salaries sal ON sal.player_id = bs.player_id AND sal.season = bs.season
+        JOIN teams t ON t.team_id = COALESCE(sal.team_id, bs.team_id, ps.team_id)
         LEFT JOIN fielding_stats fs ON fs.player_id=bs.player_id AND fs.season=bs.season
         WHERE bs.season=:season AND bs.games > :min_games AND bs.xwoba IS NOT NULL
     """)
@@ -170,12 +171,12 @@ def build_dashboard_data(season: int) -> dict:
                ps_s.hard_hit_rate_against, ps_s.barrel_rate_against, ps_s.xba_against,
                ps_s.avg_exit_velo_against, ps_s.chase_rate, ps_s.whiff_rate, ps_s.k_rate, ps_s.bb_rate,
                ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus,
-               ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.bwar
+               ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.bwar, ps_s.war AS fwar
         FROM pitcher_stats ps_s
         JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
         JOIN players p ON p.player_id = ps_s.player_id
-        JOIN teams t ON t.team_id = ps.team_id
         LEFT JOIN player_salaries sal ON sal.player_id = ps_s.player_id AND sal.season = ps_s.season
+        JOIN teams t ON t.team_id = COALESCE(sal.team_id, ps_s.team_id, ps.team_id)
         JOIN ranked r ON r.player_id = ps_s.player_id
         WHERE ps_s.season=:season AND ps_s.fip IS NOT NULL
           AND (
@@ -197,7 +198,7 @@ def build_dashboard_data(season: int) -> dict:
                bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
                bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
                fs.oaa, fs.frv, fs.drs,
-               bs.hits, bs.games, bs.bwar, bs.wrc_plus
+               bs.hits, bs.games, bs.bwar, bs.war AS fwar, bs.wrc_plus
         FROM batter_stats bs
         JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
         JOIN teams t ON t.team_id = ps.team_id
@@ -211,7 +212,7 @@ def build_dashboard_data(season: int) -> dict:
                ps_s.hard_hit_rate_against, ps_s.barrel_rate_against, ps_s.xba_against,
                ps_s.avg_exit_velo_against, ps_s.chase_rate, ps_s.whiff_rate, ps_s.k_rate, ps_s.bb_rate,
                ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus,
-               ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.bwar
+               ps_s.wins, ps_s.saves, ps_s.games_started, ps_s.bwar, ps_s.war AS fwar
         FROM pitcher_stats ps_s
         JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
         JOIN teams t ON t.team_id = ps.team_id
@@ -230,7 +231,8 @@ def build_dashboard_data(season: int) -> dict:
         FROM batter_stats bs
         JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
         JOIN players p ON p.player_id = bs.player_id
-        JOIN teams t ON t.team_id = ps.team_id
+        LEFT JOIN player_salaries sal ON sal.player_id = bs.player_id AND sal.season = bs.season
+        JOIN teams t ON t.team_id = COALESCE(sal.team_id, bs.team_id, ps.team_id)
         WHERE bs.season=:season
     """)
     ROSTER_PITCHER_Q = text("""
@@ -238,7 +240,8 @@ def build_dashboard_data(season: int) -> dict:
         FROM pitcher_stats ps_s
         JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
         JOIN players p ON p.player_id = ps_s.player_id
-        JOIN teams t ON t.team_id = ps.team_id
+        LEFT JOIN player_salaries sal ON sal.player_id = ps_s.player_id AND sal.season = ps_s.season
+        JOIN teams t ON t.team_id = COALESCE(sal.team_id, ps_s.team_id, ps.team_id)
         WHERE ps_s.season=:season
     """)
 
@@ -666,11 +669,17 @@ def build_dashboard_data(season: int) -> dict:
 
 
     print(f"[{season}] fetching headshots (only players missing from the local cache hit the network)...")
-    all_players = (
-        [to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys(), batter_history_by_player, batter_future, last30_batting)
-         for r in batters.itertuples()]
-        + [to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys(), pitcher_history_by_player, pitcher_future, last30_pitching)
-           for r in pitchers.itertuples()]
+    batter_records = [
+        to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys(), batter_history_by_player, batter_future, last30_batting)
+        for r in batters.itertuples()
+    ]
+    pitcher_records = [
+        to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys(), pitcher_history_by_player, pitcher_future, last30_pitching)
+        for r in pitchers.itertuples()
+    ]
+    fielding_positions = fetch_fielding_positions(season)
+    all_players = merge_and_deduplicate_players(
+        batter_records, pitcher_records, fielding_positions_by_player=fielding_positions
     )
     with_headshot = sum(1 for p in all_players if p["headshot"])
     print(f"  headshots: {with_headshot}/{len(all_players)}")

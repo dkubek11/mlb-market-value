@@ -44,23 +44,152 @@ from app.pipeline import war_projection
 
 # Co-locate the trailing-stats cache with the snapshot caches so the HTML
 # snapshot (build_dashboard_data) and the JSON payload share one cached fetch.
-_configure_trailing_cache(Path(__file__).resolve().parent.parent.parent / "frontend" / "dashboard" / ".snapshot_cache")
+_CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dashboard" / ".snapshot_cache"
+_configure_trailing_cache(_CACHE_DIR)
 
 MIN_BATTER_PA = 150
 MIN_IP_SP = 50
 MIN_IP_RP = 25
 POS_MAP = {"FIRST_BASE": "1B", "SECOND_BASE": "2B", "THIRD_BASE": "3B"}
 
+# Legitimate Two-Way Players (e.g. Shohei Ohtani) who have dual hitting/pitching functionality
+TWO_WAY_PLAYER_IDS = {660271}
+
+
+def fetch_fielding_positions(season: int) -> dict[int, list[str]]:
+    """Return map of player_id -> list of non-pitcher positions played, ordered by games played.
+
+    Mop-up pitching appearances ('P' / 'RP') are excluded for position players.
+    """
+    cache_path = _CACHE_DIR / f"fielding_positions_{season}.json"
+    if cache_path.exists():
+        try:
+            with open(cache_path, encoding="utf-8") as f:
+                cached = json.load(f)
+                return {int(k): v for k, v in cached.items()}
+        except Exception:
+            pass
+
+    try:
+        from app.pipeline.mlb_stats_api import fetch_bulk_stats
+        splits = fetch_bulk_stats(season, "fielding")
+        positions_by_player: dict[int, dict[str, int]] = {}
+        for s in splits:
+            pid = s.get("player", {}).get("id")
+            pos = s.get("position", {}).get("abbreviation")
+            games = s.get("stat", {}).get("gamesPlayed", 0)
+            if not pid or not pos or pos in {"P", "RP"}:
+                continue
+            positions_by_player.setdefault(pid, {})[pos] = games
+
+        result = {
+            pid: sorted(pos_dict.keys(), key=lambda p: pos_dict[p], reverse=True)
+            for pid, pos_dict in positions_by_player.items()
+        }
+        try:
+            _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump(result, f)
+        except Exception:
+            pass
+        return result
+    except Exception as exc:
+        print(f"WARNING: could not fetch fielding positions ({exc!r}); continuing without them")
+        return {}
+
+
+def merge_and_deduplicate_players(
+    batter_records: list[dict],
+    pitcher_records: list[dict],
+    two_way_player_ids: set[int] = TWO_WAY_PLAYER_IDS,
+    fielding_positions_by_player: dict[int, list[str]] | None = None,
+) -> list[dict]:
+    """Merge batter and pitcher records into all_players.
+
+    Only legitimate Two-Way Players (TWO_WAY_PLAYER_IDS) retain dual records (one
+    as batter, one as pitcher). For non-two-way players who appeared in both pools
+    (e.g., position players pitching in blowouts like Carlos Cortes, or pitchers
+    with rare plate appearances), keep only their primary record, designate their
+    secondary position, and omit the duplicate entry. Mop-up pitching ('P'/'RP')
+    is NEVER assigned to position players.
+    """
+    fielding_map = fielding_positions_by_player or {}
+    batters_by_id = {p["id"]: p for p in batter_records}
+    pitchers_by_id = {p["id"]: p for p in pitcher_records}
+    all_ids = list(dict.fromkeys([p["id"] for p in batter_records] + [p["id"] for p in pitcher_records]))
+
+    out = []
+    for pid in all_ids:
+        b = batters_by_id.get(pid)
+        pit = pitchers_by_id.get(pid)
+        player_fielding = fielding_map.get(pid, [])
+
+        if b and pit:
+            if pid in two_way_player_ids:
+                # Two-way player (Shohei Ohtani): keep both records with two-way metadata
+                b["isTwoWay"] = True
+                b["primaryPosition"] = b["position"]
+                b["secondaryPosition"] = pit["position"]
+                b["positions"] = [b["position"], pit["position"]]
+
+                pit["isTwoWay"] = True
+                pit["primaryPosition"] = pit["position"]
+                pit["secondaryPosition"] = b["position"]
+                pit["positions"] = [pit["position"], b["position"]]
+
+                out.append(b)
+                out.append(pit)
+            else:
+                # Non-two-way player: compare playing time to decide primary vs secondary
+                b_games = (b.get("stats") or {}).get("games") or 0
+                pit_ip = (pit.get("stats") or {}).get("ip") or 0
+
+                # If batter games >= 15 or pitcher IP < 20, dominant role is batter
+                if b_games >= 15 or pit_ip < 20:
+                    primary = b
+                    # Emergency mop-up relief pitching is NOT a secondary position.
+                    # Secondary position comes from real fielding/DH positions (excluding primary).
+                    other_pos = [pos for pos in player_fielding if pos != primary["position"]]
+                    sec_pos = ", ".join(other_pos) if other_pos else None
+                    all_pos = [primary["position"]] + other_pos
+                else:
+                    primary = pit
+                    sec_pos = b["position"]
+                    all_pos = [primary["position"], sec_pos]
+
+                primary["isTwoWay"] = False
+                primary["primaryPosition"] = primary["position"]
+                primary["secondaryPosition"] = sec_pos
+                primary["positions"] = all_pos
+                out.append(primary)
+        elif b:
+            b["isTwoWay"] = False
+            b["primaryPosition"] = b["position"]
+            other_pos = [pos for pos in player_fielding if pos != b["position"]]
+            b["secondaryPosition"] = ", ".join(other_pos) if other_pos else None
+            b["positions"] = [b["position"]] + other_pos
+            out.append(b)
+        elif pit:
+            pit["isTwoWay"] = False
+            pit["primaryPosition"] = pit["position"]
+            pit["secondaryPosition"] = None
+            pit["positions"] = [pit["position"]]
+            out.append(pit)
+
+    return out
+
 BATTER_STATS = [
     "ba", "obp", "slg", "xwoba", "xba", "xslg", "hr", "rbi", "sb",
     "barrel_rate", "hard_hit_rate", "sprint_speed",
     "chase_rate", "whiff_rate", "k_rate", "bb_rate", "oaa", "frv", "drs",
+    "bwar", "fwar", "hits", "games",
 ]
 PITCHER_STATS = [
     "era", "whip", "fip", "xera", "k_9", "bb_9",
     "hard_hit_rate_against", "barrel_rate_against", "xba_against",
     "avg_exit_velo_against", "chase_rate", "whiff_rate", "k_rate", "bb_rate",
     "z_swing_rate", "extension", "stuff_plus", "location_plus",
+    "bwar", "fwar", "wins", "saves", "games_started", "ip",
 ]
 
 _BATTER_Q = text("""
@@ -69,12 +198,13 @@ _BATTER_Q = text("""
            bs.ba, bs.obp, bs.slg, bs.xwoba, bs.xba, bs.xslg, bs.hr, bs.rbi, bs.sb,
            bs.barrel_rate, bs.hard_hit_rate, bs.sprint_speed,
            bs.chase_rate, bs.whiff_rate, bs.k_rate, bs.bb_rate,
-           fs.oaa, fs.frv, fs.drs
+           fs.oaa, fs.frv, fs.drs,
+           bs.bwar, bs.war AS fwar, bs.hits, bs.games
     FROM batter_stats bs
     JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
     JOIN players p ON p.player_id = bs.player_id
-    JOIN teams t ON t.team_id = ps.team_id
     JOIN player_salaries sal ON sal.player_id = bs.player_id AND sal.season = bs.season
+    JOIN teams t ON t.team_id = COALESCE(sal.team_id, bs.team_id, ps.team_id)
     LEFT JOIN fielding_stats fs ON fs.player_id=bs.player_id AND fs.season=bs.season
     WHERE bs.season=:season AND bs.pa >= :min_pa AND bs.xwoba IS NOT NULL
 """)
@@ -85,12 +215,13 @@ _PITCHER_Q = text("""
            ps_s.era, ps_s.whip, ps_s.fip, ps_s.xera, ps_s.k_9, ps_s.bb_9,
            ps_s.hard_hit_rate_against, ps_s.barrel_rate_against, ps_s.xba_against,
            ps_s.avg_exit_velo_against, ps_s.chase_rate, ps_s.whiff_rate, ps_s.k_rate, ps_s.bb_rate,
-           ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus
+           ps_s.z_swing_rate, ps_s.extension, ps_s.stuff_plus, ps_s.location_plus,
+           ps_s.bwar, ps_s.war AS fwar, ps_s.wins, ps_s.saves, ps_s.games_started
     FROM pitcher_stats ps_s
     JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
     JOIN players p ON p.player_id = ps_s.player_id
-    JOIN teams t ON t.team_id = ps.team_id
     JOIN player_salaries sal ON sal.player_id = ps_s.player_id AND sal.season = ps_s.season
+    JOIN teams t ON t.team_id = COALESCE(sal.team_id, ps_s.team_id, ps.team_id)
     WHERE ps_s.season=:season AND ps_s.fip IS NOT NULL
       AND (
         (ps.position = 'SP' AND ps_s.ip >= :min_ip_sp) OR
@@ -106,7 +237,8 @@ _ROSTER_BATTER_Q = text("""
     FROM batter_stats bs
     JOIN player_seasons ps ON ps.player_id=bs.player_id AND ps.season=bs.season AND ps.player_type='BATTER'
     JOIN players p ON p.player_id = bs.player_id
-    JOIN teams t ON t.team_id = ps.team_id
+    LEFT JOIN player_salaries sal ON sal.player_id = bs.player_id AND sal.season = bs.season
+    JOIN teams t ON t.team_id = COALESCE(sal.team_id, bs.team_id, ps.team_id)
     WHERE bs.season=:season
 """)
 _ROSTER_PITCHER_Q = text("""
@@ -114,7 +246,8 @@ _ROSTER_PITCHER_Q = text("""
     FROM pitcher_stats ps_s
     JOIN player_seasons ps ON ps.player_id=ps_s.player_id AND ps.season=ps_s.season AND ps.player_type='PITCHER'
     JOIN players p ON p.player_id = ps_s.player_id
-    JOIN teams t ON t.team_id = ps.team_id
+    LEFT JOIN player_salaries sal ON sal.player_id = ps_s.player_id AND sal.season = ps_s.season
+    JOIN teams t ON t.team_id = COALESCE(sal.team_id, ps_s.team_id, ps.team_id)
     WHERE ps_s.season=:season
 """)
 
@@ -291,9 +424,17 @@ def build_dashboard_payload(season: int, *, fetch_live_contracts: bool = True) -
                 if len(vals) >= 2 else None
             )
 
-    all_players = (
-        [ _to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys(), last30_batting, war_outlook) for r in batters.itertuples() ]
-        + [ _to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys(), last30_pitching, war_outlook) for r in pitchers.itertuples() ]
+    batter_records = [
+        _to_record(r, True, BATTER_STATS, batter_proj, BATTER_PROJECTION_STATS.keys(), last30_batting, war_outlook)
+        for r in batters.itertuples()
+    ]
+    pitcher_records = [
+        _to_record(r, False, PITCHER_STATS, pitcher_proj, PITCHER_PROJECTION_STATS.keys(), last30_pitching, war_outlook)
+        for r in pitchers.itertuples()
+    ]
+    fielding_positions = fetch_fielding_positions(season)
+    all_players = merge_and_deduplicate_players(
+        batter_records, pitcher_records, fielding_positions_by_player=fielding_positions
     )
 
     print(f"[{season}] building team payroll + rosters (all rostered players, not just qualifiers)...")

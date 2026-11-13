@@ -592,14 +592,16 @@
       background: rgba(201, 155, 66, 0.12);
     }
 
+    .status-below {
+      color: #ea580c;
+      border-color: rgba(234, 88, 12, 0.35);
+      background: rgba(234, 88, 12, 0.12);
+    }
+
     .status-poor {
       color: var(--accent-red);
       border-color: rgba(184, 93, 83, 0.35);
       background: rgba(184, 93, 83, 0.12);
-    }
-      color: #ff5252;
-      border-color: rgba(255, 82, 82, 0.4);
-      background: rgba(255, 82, 82, 0.12);
     }
 
     .player-value-row {
@@ -941,7 +943,8 @@
     .badge-tier.a { background: rgba(90, 158, 111, 0.15); color: var(--accent-green); border: 1px solid rgba(90, 158, 111, 0.3); }
     .badge-tier.b { background: rgba(109, 139, 166, 0.15); color: var(--accent-blue); border: 1px solid rgba(109, 139, 166, 0.3); }
     .badge-tier.c { background: rgba(201, 155, 66, 0.15); color: var(--accent-gold); border: 1px solid rgba(201, 155, 66, 0.3); }
-    .badge-tier.d { background: rgba(184, 93, 83, 0.15);  color: var(--accent-red); border: 1px solid rgba(184, 93, 83, 0.3); }
+    .badge-tier.d { background: rgba(234, 88, 12, 0.15);  color: #ea580c; border: 1px solid rgba(234, 88, 12, 0.3); }
+    .badge-tier.f { background: rgba(184, 93, 83, 0.15);  color: var(--accent-red); border: 1px solid rgba(184, 93, 83, 0.3); }
 
     .perf-great { color: var(--accent-green); }
     .perf-good { color: var(--accent-gold); }
@@ -2464,6 +2467,7 @@
     .name-cell .table-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 1px solid var(--border-color); background: var(--bg-card-hover); }
     .name-meta { display: inline-flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
     .team-tag, .pos-pill, .pos-badge { display: inline-block; padding: 0.15rem 0.4rem; border-radius: 5px; background: var(--bg-card-hover); border: 1px solid var(--border-color); color: var(--text-sub); font-family: var(--font-mono); font-size: 0.64rem; }
+    .sec-pos-pill { opacity: 0.8; font-size: 0.58rem; padding: 0.1rem 0.35rem; border-style: dashed; }
     .team-logo { object-fit: contain; vertical-align: middle; display: inline-block; margin-right: 4px; flex-shrink: 0; }
     .chevron { display: inline-block; transition: transform 0.18s ease; color: var(--text-muted); margin-right: 0.45rem; vertical-align: middle; }
     .chevron.open { transform: rotate(90deg); }

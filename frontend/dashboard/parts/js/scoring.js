@@ -567,11 +567,12 @@
       }
     }
     Object.values(perfPools).forEach(group => {
-      rankInto(group, p => (p.stats.bwar != null ? p.stats.bwar : 0), 'compPct');
+      rankInto(group, p => (p.stats.fwar != null ? p.stats.fwar : (p.stats.bwar != null ? p.stats.bwar : 0)), 'compPct');
       rankInto(group, p => p.expectedWar, 'expectedPct');
       group.forEach(p => {
         p.grade = gradeFor(p.compPct);
-        p.warGap = (p.stats.bwar != null ? p.stats.bwar : 0) - p.expectedWar;
+        const actualWar = p.stats.fwar != null ? p.stats.fwar : (p.stats.bwar != null ? p.stats.bwar : 0);
+        p.warGap = actualWar - p.expectedWar;
       });
     });
 

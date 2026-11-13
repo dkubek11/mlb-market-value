@@ -741,6 +741,10 @@
     };
     const tierBadgeText = tierLabelMap[tier.cls] || `Tier ${tier.label}`;
 
+    const posDisplay = record.secondaryPosition
+      ? `${record.position} · Sec: ${record.secondaryPosition}`
+      : record.position;
+
     // Hero Banner
     const heroHtml = `
       <div class="card-hero-banner" style="background: linear-gradient(135deg, ${colors[0]}, ${colors[1]});">
@@ -754,7 +758,7 @@
               <h2 class="card-hero-name">${record.name}</h2>
               <span class="card-tier-pill tier-${tier.cls}">${tierBadgeText}</span>
             </div>
-            <div class="card-hero-meta">${record.position} · ${teamFullName}</div>
+            <div class="card-hero-meta">${posDisplay} · ${teamFullName}</div>
             <div class="card-hero-tag-row">
               <span class="card-contract-badge">${contract.label}</span>
               <span class="card-salary-mono">${fmtMoney(record.salary)} in ${CURRENT_SEASON}</span>
