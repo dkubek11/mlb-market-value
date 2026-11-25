@@ -47,6 +47,9 @@ frontend/dashboard/.snapshot_cache/
 .kilo/plans/
 .kilo/worktrees/
 
+# Superpowers agent tooling (execution plans, ledgers)
+.superpowers/
+
 # Documentation and plans (superpowers plans/specs, notes)
 docs/
 
